@@ -37,22 +37,22 @@ def wait_to_complete(method):
         wait = kws.pop('_wait', True)
         wait_timeout = kws.pop('_wait_timeout', 60)
 
-        method_api_response = method.__get__(self, type(self))(*a, **kws)
+        methodapi_response = method.__get__(self, type(self))(*a, **kws)
 
         if not wait:
-            return method_api_response
+            return methodapi_response
 
-        action_uuid = getattr(method_api_response, 'action_uuid', None)
+        action_uuid = getattr(methodapi_response, 'action_uuid', None)
 
         if action_uuid:
-            api_instance = tacp.ActionsApi(self._api_client)
+            api_instance = tacp.ActionsApi(self.api_client)
 
             time_spent = 0
 
             while time_spent < wait_timeout:
                 api_response = api_instance.get_action_using_get(action_uuid)
                 if api_response.status == 'Completed':
-                    return method_api_response
+                    return methodapi_response
 
                 sleep(1)
                 time_spent += 1
@@ -67,7 +67,7 @@ class Resource(object):
     def __init__(self, client):
         assert self.resource_class is not None
         self.api = self.resource_class(client)
-        self._api_client = client
+        self.api_client = client
 
     FILTER_OPERATORS = [
         '==', '!=', '=lt=', '<', '=le=', '<=', '=gt=', '>', '=ge=', '>=',
@@ -149,12 +149,12 @@ class ApplicationResource(Resource):
     resource_class = tacp.ApplicationsApi
 
     def filter(self, **filters):
-        return self.api.get_applications_using_get(
-            **self.get_filters_kws(**filters)
-        )
+        return [result.to_dict() for result in
+                self.api.get_applications_using_get(
+                    **self.get_filters_kws(**filters))]
 
     def get_by_uuid(self, uuid):
-        return self.api.get_application_using_get(uuid)
+        return self.api.get_application_using_get(uuid).to_dict()
 
     @wait_to_complete
     def create(self, body):
@@ -162,7 +162,7 @@ class ApplicationResource(Resource):
 
     @wait_to_complete
     def delete(self, uuid):
-        return self.api.delete_application_using_delete(uuid)
+        return self.api.delete_application_using_delete(uuid).to_dict()
 
     @wait_to_complete
     def power_action_on_instance_by_uuid(self, uuid, power_action):
@@ -179,19 +179,19 @@ class ApplicationResource(Resource):
             Action.ABSENT: self.api.delete_application_using_delete,
             Action.RESUMED: self.api.resume_application_using_put
         }
-        return power_action_dict[power_action](uuid)
+        return power_action_dict[power_action](uuid).to_dict()
 
 
 class VlanResource(Resource):
     resource_class = tacp.VlansApi
 
     def filter(self, **filters):
-        return self.api.get_vlans_using_get(
-            **self.get_filters_kws(**filters)
-        )
+        return [result.to_dict() for result in
+                self.api.get_vlans_using_get(
+                    **self.get_filters_kws(**filters))]
 
     def get_by_uuid(self, uuid):
-        return self.api.get_vlan_using_get(uuid)
+        return self.api.get_vlan_using_get(uuid).to_dict()
 
     @wait_to_complete
     def create(self, body):
@@ -199,19 +199,19 @@ class VlanResource(Resource):
 
     @wait_to_complete
     def delete(self, uuid):
-        return self.api.delete_vlan_using_delete(uuid)
+        return self.api.delete_vlan_using_delete(uuid).to_dict()
 
 
 class VnetResource(Resource):
     resource_class = tacp.VnetsApi
 
     def filter(self, **filters):
-        return self.api.get_vnets_using_get(
-            **self.get_filters_kws(**filters)
-        )
+        return [result.to_dict() for result in
+                self.api.get_vnets_using_get(
+                    **self.get_filters_kws(**filters))]
 
     def get_by_uuid(self, uuid):
-        return self.api.get_vnet_using_get(uuid)
+        return self.api.get_vnet_using_get(uuid).to_dict()
 
     @wait_to_complete
     def create(self, body):
@@ -219,7 +219,147 @@ class VnetResource(Resource):
 
     @wait_to_complete
     def delete(self, uuid):
-        return self.api.delete_vnet_using_delete(uuid)
+        return self.api.delete_vnet_using_delete(uuid).to_dict()
+
+
+class StoragePoolResource(Resource):
+
+    resource_class = tacp.FlashPoolsApi
+
+    def filter(self, **filters):
+        return [result.to_dict() for result in
+                self.api.get_flash_pools_using_get(
+                    **self.get_filters_kws(**filters))]
+
+    def get_by_uuid(self, uuid):
+        return self.api.get_flash_pool_using_get(uuid).to_dict()
+
+
+class DatacenterResource(Resource):
+
+    resource_class = tacp.DatacentersApi
+
+    def filter(self, **filters):
+        return [result.to_dict() for result in
+                self.api.get_datacenters_using_get(
+                    **self.get_filters_kws(**filters))]
+
+    def get_by_uuid(self, uuid):
+        return self.api.get_datacenter_using_get(uuid).to_dict()
+
+
+class UserResource(Resource):
+
+    resource_class = tacp.UsersApi
+
+    def filter(self, **filters):
+        return [result.to_dict() for result in
+                self.api.get_users_using_get(
+                    **self.get_filters_kws(**filters))]
+
+    def get_by_uuid(self, uuid):
+        return self.api.get_user_using_get(uuid).to_dict()
+
+
+class SiteResource(Resource):
+
+    resource_class = tacp.LocationsApi
+
+    def filter(self, **filters):
+        return [result.to_dict() for result in
+                self.api.get_locations_for_organization_using_get(
+                    **self.get_filters_kws(**filters))]
+
+    def get_by_uuid(self, uuid):
+        return self.api.get_location_information_using_get(uuid).to_dict()
+
+
+class TemplateResource(Resource):
+
+    resource_class = tacp.TemplatesApi
+
+    def filter(self, **filters):
+        return [result.to_dict() for result in
+                self.api.get_templates_using_get(
+                    **self.get_filters_kws(**filters))]
+
+    def get_by_uuid(self, uuid):
+        return self.api.get_template_using_get(uuid).to_dict()
+
+
+class TagResource(Resource):
+
+    resource_class = tacp.TagsApi
+
+    def filter(self, **filters):
+        return [result.to_dict() for result in
+                self.api.get_tags_using_get(
+                    **self.get_filters_kws(**filters))]
+
+    def get_by_uuid(self, uuid):
+        return self.api.get_tag_using_get(uuid).to_dict()
+
+
+class MigrationZoneResource(Resource):
+
+    resource_class = tacp.MigrationZonesApi
+
+    def filter(self, **filters):
+        return [result.to_dict() for result in
+                self.api.get_migration_zones_using_get(
+                    **self.get_filters_kws(**filters))]
+
+    def get_by_uuid(self, uuid):
+        return self.api.get_migration_zone_using_get(uuid).to_dict()
+
+
+class MarketplaceTemplateResource(Resource):
+
+    resource_class = tacp.MarketplaceTemplatesApi
+
+    def filter(self, **filters):
+        return [result.to_dict() for result in
+                self.api.get_marketplace_templates_using_get(
+                    **self.get_filters_kws(**filters))]
+
+    def get_by_uuid(self, uuid):
+        return self.api.get_marketplace_template_using_get(uuid).to_dict()
+
+
+class ApplicationGroupResource(Resource):
+
+    resource_class = tacp.ApplicationGroupsApi
+
+    def filter(self, **filters):
+        return [result.to_dict() for result in
+                self.api.get_application_group_list_using_get(
+                    **self.get_filters_kws(**filters))]
+
+    def get_by_uuid(self, uuid):
+        return self.api.get_application_group_information_using_get(uuid).to_dict()
+
+
+class CategoryResource(Resource):
+
+    resource_class = tacp.CategoriesApi
+
+    def filter(self, **filters):
+        return [result.to_dict() for result in
+                self.api.get_categories_using_get(
+                    **self.get_filters_kws(**filters))]
+
+    def get_by_uuid(self, uuid):
+        return self.api.get_category_using_get(uuid).to_dict()
+
+
+class FirewallProfileResource(Resource):
+
+    resource_class = tacp.FirewallProfilesApi
+
+    def filter(self, **filters):
+        return [result.to_dict() for result in
+                self.api.get_firewall_profiles_using_get(
+                    **self.get_filters_kws(**filters))]
 
 
 def get_component_fields_by_name(name, component,
