@@ -266,7 +266,7 @@ def run_module():
         return network_params
 
     def create_vlan_network(network_params):
-        vlanResource = tacp_utils.VlanResource(api_client)
+        vlan_resource = tacp_utils.VlanResource(api_client)
         body = tacp.ApiVlanPropertiesPayload(
             name=network_params['name'],
             location_uuid=network_params['location_uuid'],
@@ -275,17 +275,18 @@ def run_module():
         if module._verbosity >= 3:
             result['api_request_body'] = str(body)
 
-        created_vlan_uuid = vlanResource.create(body)
+        response = vlan_resource.create(body)
 
-        result['ansible_module_results'] = vlanResource.get_by_uuid(
-            created_vlan_uuid)
+        result['ansible_module_results'] = vlan_resource.get_by_uuid(
+            response.object_uuid
+        )
 
         result['changed'] = True
         result['failed'] = False
         module.exit_json(**result)
 
     def create_vnet_network(network_params):
-        vnetResource = tacp_utils.VnetResource(api_client)
+        vnet_resource = tacp_utils.VnetResource(api_client)
 
         # Package static bindings input as a list of ApiStaticBindingRulePayloads
         static_binding_payloads = []
@@ -378,41 +379,46 @@ def run_module():
         if module._verbosity >= 3:
             result['api_request_body'] = str(body)
 
-        created_vnet_uuid = vnetResource.create(body)
+        response = vnet_resource.create(body)
 
-        result['ansible_module_results'] = vnetResource.get_by_uuid(
-            created_vnet_uuid)
+        result['ansible_module_results'] = vnet_resource.get_by_uuid(
+            response.object_uuid
+        )
         result['changed'] = True
         result['failed'] = False
         module.exit_json(**result)
 
     def delete_network(name, network_type, api_client):
         if network_type == 'VLAN':
-            vlanResource = tacp_utils.VlanResource(api_client)
+            vlan_resource = tacp_utils.VlanResource(api_client)
 
-            vlan_uuid = vlanResource.get_uuid_by_name(name)
+            vlan_uuid = vlan_resource.get_uuid_by_name(name)
 
             if vlan_uuid:
-                action_result = vlanResource.delete(vlan_uuid)
-                if action_result is not True:
-                    fail_with_reason(action_result)
+                response = vlan_resource.delete(vlan_uuid)
+                if not hasattr(response, 'object_uuid'):
+                    fail_with_reason(response)
 
         elif network_type == 'VNET':
-            vnetResource = tacp_utils.VnetResource(api_client)
-            applicationResource = tacp_utils.ApplicationInstanceResource(
-                api_client)
+            vnet_resource = tacp_utils.VnetResource(api_client)
+            application_resource = tacp_utils.ApplicationResource(api_client)
 
-            vnet_uuid = vnetResource.get_uuid_by_name(name)
-            nfv_uuid = vnetResource.get_by_uuid(vnet_uuid)['nfv_instance_uuid']
+            vnet_uuid = vnet_resource.get_uuid_by_name(name)
 
-            # Delete the NFV instance
-            action_result = applicationResource.delete(nfv_uuid)
-            if action_result is not True:
-                fail_with_reason(action_result)
+            if vnet_uuid:
+                nfv_uuid = vnet_resource.get_by_uuid(vnet_uuid)['nfv_instance_uuid']
 
-            action_result = vnetResource.delete(vnet_uuid)
-            if action_result is not True:
-                fail_with_reason(action_result)
+                if nfv_uuid:
+                    # Delete the NFV instance
+                    response = application_resource.delete(nfv_uuid)
+                    if not hasattr(response, 'object_uuid'):
+                        fail_with_reason(response)
+
+                response = vnet_resource.delete(vnet_uuid)
+                if not hasattr(response, 'object_uuid'):
+                    fail_with_reason(response)
+            else:
+                fail_with_reason("No VNET found with name %s " % name)
 
         result['changed'] = True
         result['failed'] = False
@@ -432,13 +438,12 @@ def run_module():
     api_client = tacp.ApiClient(configuration)
 
     if module.params['network_type'].upper() == 'VLAN':
-        vlanResource = tacp_utils.VlanResource(api_client)
-        vlan_uuid = vlanResource.get_uuid_by_name(module.params['name'])
+        vlan_resource = tacp_utils.VlanResource(api_client)
+        vlan_uuid = vlan_resource.get_uuid_by_name(module.params['name'])
 
         if module.params['state'] == 'present':
             if vlan_uuid:
                 result['msg'] = "VLAN network %s is already present, nothing to do." % module.params['name']
-               
             else:
                 network_params = generate_network_params(module)
                 create_vlan_network(network_params)
@@ -449,15 +454,14 @@ def run_module():
                     name=module.params['name'], network_type='VLAN', api_client=api_client)
             else:
                 result['msg'] = "VLAN network %s is already absent, nothing to do." % module.params['name']
-               
 
     elif module.params['network_type'].upper() == 'VNET':
-        vnetResource = tacp_utils.VnetResource(api_client)
-        vnet_uuid = vnetResource.get_uuid_by_name(module.params['name'])
+        vnet_resource = tacp_utils.VnetResource(api_client)
+        vnet_uuid = vnet_resource.get_uuid_by_name(module.params['name'])
         if module.params['state'] == 'present':
             if vnet_uuid:
                 result['msg'] = "VNET network %s is already present, nothing to do." % module.params['name']
-               
+
             else:
                 network_params = generate_network_params(module)
                 create_vnet_network(network_params)
@@ -467,7 +471,6 @@ def run_module():
                     name=module.params['name'], network_type='VNET', api_client=api_client)
             else:
                 result['msg'] = "VNET network %s is already absent, nothing to do." % module.params['name']
-               
 
     # use whatever logic you need to determine whether or not this module
     # made any modifications to your target
