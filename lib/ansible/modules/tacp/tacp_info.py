@@ -10,7 +10,6 @@ from ansible.module_utils.tacp_ansible.tacp_exceptions import UuidNotFoundExcept
 
 import tacp
 from tacp.rest import ApiException
-import sys
 
 ANSIBLE_METADATA = {
     'metadata_version': '1.1',
