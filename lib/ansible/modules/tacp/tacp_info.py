@@ -10,7 +10,7 @@ from ansible.module_utils.tacp_ansible.tacp_exceptions import UuidNotFoundExcept
 
 import tacp
 from tacp.rest import ApiException
-
+import sys
 
 ANSIBLE_METADATA = {
     'metadata_version': '1.1',
@@ -202,6 +202,7 @@ def run_module():
                                     vlan_resource.filter(uuid=('=in=', uuids))}  # noqa
                 network_list.update({vnet.uuid: vnet.name for vnet in
                                     vnet_resource.filter(uuid=('=in=', uuids))})  # noqa
+
                 for network in item['networks']:
                     network['name'] = network_list[network['uuid']]
 
