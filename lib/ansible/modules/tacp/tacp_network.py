@@ -670,6 +670,10 @@ def run_module():
             result['api_request_body'] = str(body)
 
         response = vnet_resource.create(body)
+        if 'Invalid Request' in str(response):
+            error_message = str(response).split('"message\":\"')[-1][:-3]
+            result['msg'] = error_message
+            module.fail_json(**result)
 
         result['ansible_module_results'] = vnet_resource.get_by_uuid(
             response.object_uuid
