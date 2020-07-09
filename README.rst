@@ -13,15 +13,24 @@ Ansible environment.
 
 Requirements
 ------------
-- Python >= 3.6
-- python3-pip
-- ansible
-- tacp
+Before installing Lenovo modules, ensure the following requirements are met:
 
+- Python version 3.6 or greater
+- python3-pip
+- Ansible
+- A ThinkAgile CP API token 
+
+Lenovo ThinkAgile CP Python package
+-----------------------------------
+``pip install tacp``
+
+or
+
+``pip3 install tacp``
 
 Installation
 ------------
-Download this git respository.
+Download this respository.
 
 ``cd ~``
 
@@ -31,7 +40,7 @@ Download this git respository.
 
 |
 
-The tacp modules and module_utils files can be added to any of the following dfirectories:
+The ThinkAgile CP Ansible modules and module_utils files can be added to any of the following dfirectories:
 
 - any directory added to the ``ANSIBLE_LIBRARY`` environment variable (``$ANSIBLE_LIBRARY`` takes a colon-separated list like ``$PATH``)
 
@@ -49,20 +58,22 @@ The tacp modules and module_utils files can be added to any of the following dfi
 
 ``$ mkdir -p ~/.ansible/plugins/module_utils ~/.ansible/plugins/modules/cloud``
 
-4. Copy the ``module_utils/tacp_ansible/`` directory from this ansible.lenovo-tacp repo into
+4. Copy the ``module_utils/tacp_ansible/`` directory from the ansible.lenovo-tacp repository into
    the local Ansible installation's ``module_utils/`` directory. In this example the module files 
-   are copied to the ``/usr/share/ansible/plugins`` location, which requires ``sudo``.
+   are copied to the ``/usr/share/ansible/plugins`` location, which requires the use of ``sudo``.
 
 ``$ cp -R ./lib/ansible/module_utils/tacp_ansible 
 ~/.ansible/plugins/module_utils``
 
-5. Copy the ``modules/tacp/`` directory from this ansible.lenovo-tacp repo into
+5. Copy the ``modules/tacp/`` directory from the ansible.lenovo-tacp repository into
    the local Ansible installation's ``modules/cloud/`` directory.
 
 ``$ cp -R ./lib/ansible/modules/tacp 
 ~/.ansible/plugins/modules/cloud``
 
-6. Verify the manual installation worked:
+6. Verify that the manual installation functioned correctly. The ``ansible-doc`` 
+   command should return documentation for the module name specified 
+   (``tacp_instance``, ``tacp_network``, or ``tacp_info``).
 
 .. code-block:: shell 
 
@@ -180,11 +191,9 @@ Examples
             - name: Disk 0
               size_gb: 50
               boot_order: 2
-              iops_limit: 200
             - name: Disk 1
               size_gb: 200
               boot_order: 3
-              bandwidth_limit: 10000000
           nics:
             - name: vNIC 0
               type: VLAN
