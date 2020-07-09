@@ -129,11 +129,12 @@ class Resource(object):
 
                 value = value[0]
                 if op in ('=in=', '=out='):
-                    value = ','.join(map(str, value))
+                    value = ','.join(map(lambda v: '"{}"'.format(v), value))
                     value = '({})'.format(value)
             else:
                 op = '=='
-                value = v
+                value = '"{}"'.format(v)
+
             filters.append('{}{}{}'.format(k, op, value))
 
         return ';'.join(filters)
