@@ -472,12 +472,14 @@ def run_module():
         network_params['name'] = module.params['name']
 
         if 'location_uuid' not in network_params.keys():
-            site = next(site for site in site_list if
-                        site.name == module.params['site_name'])
-            location_uuid = site.uuid
-            if not location_uuid:
+            try:
+                site = next(site for site in site_list if
+                            site.name == module.params['site_name'])
+            except StopIteration:
                 fail_with_reason(
-                    "Could not get a UUID for the provided site name. Verify that a site with name %s exists and try again." % module.params['site_name'])
+                    "Could not get a UUID for the provided site name. Verify that a site with name %s exists and try again." % module.params['site_name'])  # noqa
+            location_uuid = site.uuid
+
             network_params['location_uuid'] = location_uuid
 
         if module.params['network_type'].upper() == 'VNET':
@@ -668,6 +670,10 @@ def run_module():
             result['api_request_body'] = str(body)
 
         response = vnet_resource.create(body)
+        if 'Invalid Request' in str(response):
+            error_message = str(response).split('"message\":\"')[-1][:-3]
+            result['msg'] = error_message
+            module.fail_json(**result)
 
         result['ansible_module_results'] = vnet_resource.get_by_uuid(
             response.object_uuid
