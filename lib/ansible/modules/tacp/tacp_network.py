@@ -63,10 +63,10 @@ options:
       - The type of network. Valid choices are either "VNET" or "VLAN".
     required: True
     type: str
-  site_name:
+  stack:
     description:
-      - The name of the site that the network will be a part of.
-      - If only one site exists, that site will be used by default and
+      - The name of the stack that the network will be a part of.
+      - If only one stack exists, that stack will be used by default and
         this parameter is unneeded.
     required: False
     type: str
@@ -385,7 +385,7 @@ def run_module():
                    choices=['present', 'absent']),
         network_type=dict(type='str', required=True, choices=[
                           'VLAN', 'vlan', 'VNET', 'vnet']),
-        site_name=dict(type='str', required=False),
+        stack=dict(type='str', required=False),
         vlan_tag=dict(type='int', required=False),
         firewall_override=dict(type='str', required=False),
         firewall_profile=dict(type='str', required=False),
@@ -414,10 +414,10 @@ def run_module():
     def fail_with_reason(reason):
         module.fail_json(msg=reason, **result)
 
-    def get_site_list():
+    def get_stack_list():
         api_instance = tacp.LocationsApi(api_client)
         try:
-            # View sites for an organization
+            # View stacks for an organization
             api_response = api_instance.get_locations_for_organization_using_get()
         except ApiException as e:
             return "Exception when calling get_locations_for_organization_using_get: %s\n" % e
@@ -428,15 +428,15 @@ def run_module():
             return None
 
     def validate_input(params):
-        # Check if there is more than one site already
+        # Check if there is more than one stack already
         # If there is only one, default to that one.
-        # Otherwise require a site_name to be provided
+        # Otherwise require a stack to be provided
         required_params = []
         missing_params = []
 
-        site_list = get_site_list()
-        if len(site_list) != 1:
-            required_params.append('site_name')
+        stack_list = get_stack_list()
+        if len(stack_list) != 1:
+            required_params.append('stack')
 
         inputs_valid = True
         if params['network_type'].upper() == 'VLAN':
@@ -461,9 +461,9 @@ def run_module():
     def generate_network_params(module):
         network_params = {}
 
-        site_list = get_site_list()
-        if len(site_list) == 1:
-            network_params['location_uuid'] = site_list[0].uuid
+        stack_list = get_stack_list()
+        if len(stack_list) == 1:
+            network_params['location_uuid'] = stack_list[0].uuid
 
         # inputs_valid, missing_params = validate_input(module.params)
         # if not inputs_valid:
@@ -473,12 +473,12 @@ def run_module():
 
         if 'location_uuid' not in network_params.keys():
             try:
-                site = next(site for site in site_list if
-                            site.name == module.params['site_name'])
+                stack = next(stack for stack in stack_list if
+                             stack.name == module.params['stack'])
             except StopIteration:
                 fail_with_reason(
-                    "Could not get a UUID for the provided site name. Verify that a site with name %s exists and try again." % module.params['site_name'])  # noqa
-            location_uuid = site.uuid
+                    "Could not get a UUID for the provided stack name. Verify that a stack with name %s exists and try again." % module.params['stack'])  # noqa
+            location_uuid = stack.uuid
 
             network_params['location_uuid'] = location_uuid
 

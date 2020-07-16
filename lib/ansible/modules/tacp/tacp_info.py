@@ -54,7 +54,7 @@ options:
         - instance
         - marketplace_template
         - migration_zone
-        - site
+        - stack
         - storage_pool
         - tag
         - template
@@ -113,7 +113,7 @@ module_args = {
                          "instance",
                          "marketplace_template",
                          "migration_zone",
-                         "site",
+                         "stack",
                          "storage_pool",
                          "tag",
                          "template",
@@ -130,7 +130,7 @@ resource_dict = {"application": tacp_utils.ApplicationResource,
                  "instance": tacp_utils.ApplicationResource,
                  "marketplace_template": tacp_utils.MarketplaceTemplateResource,  # noqa
                  "migration_zone": tacp_utils.MigrationZoneResource,
-                 "site": tacp_utils.SiteResource,
+                 "stack": tacp_utils.StackResource,
                  "storage_pool": tacp_utils.StoragePoolResource,
                  "tag": tacp_utils.TagResource,
                  "template": tacp_utils.TemplateResource,

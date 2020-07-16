@@ -323,7 +323,7 @@ class UserResource(Resource):
     uuid_method = "get_user_using_get"
 
 
-class SiteResource(Resource):
+class StackResource(Resource):
 
     resource_class = tacp.LocationsApi
 
