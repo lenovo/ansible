@@ -314,6 +314,10 @@ class DatacenterResource(Resource):
 
         return firewall_override
 
+    @wait_to_complete
+    def create(self, body):
+        return self.api.create_datacenter_using_post(body)
+
 
 class UserResource(Resource):
 
@@ -361,6 +365,10 @@ class MarketplaceTemplateResource(Resource):
 
     filter_method = "get_marketplace_templates_using_get"
     uuid_method = "get_marketplace_template_using_get"
+
+    @wait_to_complete
+    def download_marketplace_template_to_datacenter(self, body, uuid):
+        return self.api.download_marketplace_template_using_put(body, uuid)
 
 
 class ApplicationGroupResource(Resource):
