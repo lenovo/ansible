@@ -6,6 +6,7 @@
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.tacp_ansible import tacp_utils
 
+import json
 import tacp
 from tacp.rest import ApiException
 
@@ -125,12 +126,12 @@ def validate_inputs():
 
 def create_datacenter():
     body = get_datacenter_payload(playbook_dc)
-    RESULT['body'] = str(body)
-    # MODULE.exit_json(**RESULT)
-    response = RESOURCES['datacenter'].create(body)
 
-    if not hasattr(response, 'uuid'):
-        fail_with_reason(str(response))
+    try:
+        response = RESOURCES['datacenter'].create(body)
+    except ApiException as e:
+        message = json.loads(e.body)['message']
+        fail_with_reason(message)
 
     return RESOURCES['datacenter'].get_by_uuid(
         response.uuid)
@@ -235,9 +236,9 @@ def get_storage_pool_resource_payload(playbook_pool):
 
 
 def run_module():
-  #  validate_inputs()
+    validate_inputs()
 
-    RESULT['datacenter'] = create_datacenter()
+    RESULT['datacenter'] = str(create_datacenter())
     RESULT['changed'] = True
 
     MODULE.exit_json(**RESULT)
