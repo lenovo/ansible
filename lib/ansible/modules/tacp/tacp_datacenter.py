@@ -63,7 +63,7 @@ module_args = {
                    'default': 'https://manage.cp.lenovo.com'},
     'name': {'type': 'str', 'required': True},
     'support_widget_for_vdc_users': {'type': 'bool', 'required': False,
-                                     'default': True},
+                                     'default': False},
     'migration_zones': {'type': 'list', 'required': True},
     'storage_pools': {'type': 'list', 'required': True},
     'networks': {'type': 'list', 'required': True}
@@ -85,6 +85,7 @@ CONFIGURATION = tacp_utils.get_configuration(MODULE.params['api_key'],
 API_CLIENT = tacp.ApiClient(CONFIGURATION)
 
 RESOURCES = {
+    'category': tacp_utils.CategoryResource(API_CLIENT),
     'datacenter': tacp_utils.DatacenterResource(API_CLIENT),
     'migration_zone': tacp_utils.MigrationZoneResource(API_CLIENT),
     'storage_pool': tacp_utils.StoragePoolResource(API_CLIENT),
@@ -105,35 +106,49 @@ def fail_with_reason(reason):
 
 
 def validate_inputs():
-    invalid_inputs = {}
+    nonexistent_resources = {}
     if not playbook_dc_is_new(playbook_dc['name']):
         fail_with_reason('There is already a datacenter with the provided name'
                          ' in the organization, cannot create another with'
                          ' the same name.')
     for resource_type in ['migration_zone', 'storage_pool', 'network']:
-        invalids = get_invalid_inputs_for_resource(resource_type)
-        if invalids:
-            invalid_inputs[resource_type] = invalids
+        resources = get_nonexistent_resources_of_type(resource_type)
+        if resources:
+            nonexistent_resources[resource_type] = resources
 
-    if invalid_inputs:
-        fail_with_reason('The following resources could not be found: ' +
-                         ', '.join(["{}: {}".format(k, v)
-                                    for k, v in invalid_inputs.items()]))
+    if nonexistent_resources:
+        fail_with_reason(
+            'The following resources could not be found: ' +
+            ', '.join(["{}: {}".format(k, v)
+                       for k, v in nonexistent_resources.items()]))
+
+
+def create_datacenter():
+    body = get_datacenter_payload(playbook_dc)
+    RESULT['body'] = str(body)
+    # MODULE.exit_json(**RESULT)
+    response = RESOURCES['datacenter'].create(body)
+
+    if not hasattr(response, 'uuid'):
+        fail_with_reason(str(response))
+
+    return RESOURCES['datacenter'].get_by_uuid(
+        response.uuid)
 
 
 def playbook_dc_is_new(playbook_dc_name):
     return playbook_dc_name not in existing_datacenter_names
 
 
-def get_invalid_inputs_for_resource(playbook_resource):
-    invalids = []
+def get_nonexistent_resources_of_type(playbook_resource):
+    nonexistent_resources = []
     if playbook_resource in ['migration_zone', 'storage_pool']:
         existing_resources = [resource.name for resource in
                               RESOURCES[playbook_resource].filter()]
 
         for resource in playbook_dc['{}s'.format(playbook_resource)]:
             if resource['name'] not in existing_resources:
-                invalids.append(resource['name'])
+                nonexistent_resources.append(resource['name'])
 
     elif playbook_resource == 'network':
         existing_networks = {}
@@ -150,13 +165,81 @@ def get_invalid_inputs_for_resource(playbook_resource):
                         network['name']))
             if network['name'] not in \
                     existing_networks[network['network_type'].upper()]:
-                invalids.append(network['name'])
+                nonexistent_resources.append(network['name'])
 
-    return invalids
+    return nonexistent_resources
+
+
+def get_datacenter_payload(playbook_dc):
+    resource_allocations = []
+
+    for playbook_mz in playbook_dc['migration_zones']:
+        resource_allocations.append(
+            get_migration_zone_resource_payload(playbook_mz))
+
+    for playbook_pool in playbook_dc['storage_pools']:
+        resource_allocations.append(
+            get_storage_pool_resource_payload(playbook_pool)
+        )
+
+    payload = tacp.ApiCreateDatacenterPayload(
+        name=playbook_dc['name'],
+        is_support_widget_enabled=playbook_dc['support_widget_for_vdc_users'],
+        resource_allocations=resource_allocations)
+
+    return payload
+
+
+def get_migration_zone_resource_payload(playbook_mz):
+    migration_zone = RESOURCES['migration_zone'].get_by_name(
+        playbook_mz['name'])
+
+    category_name = 'Default' if 'category' not in playbook_mz\
+        else playbook_mz['category']
+
+    category = RESOURCES['category'].get_by_name(category_name)
+
+    if category.uuid not in [cat.category_uuid for cat
+                             in migration_zone.allocations.categories]:
+        fail_with_reason(
+            "Category {} is not present in migration zone {}".format(
+                category_name, migration_zone.name))
+
+    if not category:
+        fail_with_reason("Invalid category name {}".format(category_name))
+
+    memory_bytes = tacp_utils.convert_memory_abbreviation_to_bytes(
+        "{}GB".format(playbook_mz['memory_gb']))
+
+    category_allocation_payload = tacp.ApiCreateDatacenterCategoryAllocationPayload(  # noqa
+        allocated_cpus=playbook_mz['cpu_cores'],
+        allocated_memory_bytes=memory_bytes,
+        category_uuid=category.uuid)
+
+    return tacp.ApiCreateDatacenterResourcePayload(
+        category_alocations=[category_allocation_payload],
+        migration_zone_uuid=migration_zone.uuid)
+
+
+def get_storage_pool_resource_payload(playbook_pool):
+    storage_pool = RESOURCES['storage_pool'].get_by_name(
+        playbook_pool['name'])
+
+    allocated_capacity = int(tacp_utils.convert_memory_abbreviation_to_bytes(
+        "{}GB".format(playbook_pool['storage_gb'])))
+
+    return tacp.ApiCreateDatacenterResourcePayload(
+        allocated_capacity=allocated_capacity,
+        flash_pool_uuid=storage_pool.uuid
+    )
 
 
 def run_module():
-    validate_inputs()
+  #  validate_inputs()
+
+    RESULT['datacenter'] = create_datacenter()
+    RESULT['changed'] = True
+
     MODULE.exit_json(**RESULT)
 
 

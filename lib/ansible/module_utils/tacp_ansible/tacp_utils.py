@@ -314,7 +314,6 @@ class DatacenterResource(Resource):
 
         return firewall_override
 
-    @wait_to_complete
     def create(self, body):
         return self.api.create_datacenter_using_post(body)
 
