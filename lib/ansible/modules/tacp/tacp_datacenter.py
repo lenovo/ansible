@@ -119,7 +119,7 @@ def validate_inputs():
 
     if nonexistent_resources:
         fail_with_reason(
-            'The following resources could not be found: ' +
+            'The following resources could not be found:\n' +
             ', '.join(["{}: {}".format(k, v)
                        for k, v in nonexistent_resources.items()]))
 
@@ -129,12 +129,16 @@ def create_datacenter():
 
     try:
         response = RESOURCES['datacenter'].create(body)
+        datacenter_uuid = response.uuid
     except ApiException as e:
         message = json.loads(e.body)['message']
         fail_with_reason(message)
 
+    if playbook_dc['networks']:
+        add_networks_to_datacenter(playbook_dc['networks'], datacenter_uuid)
+
     return RESOURCES['datacenter'].get_by_uuid(
-        response.uuid)
+        datacenter_uuid)
 
 
 def playbook_dc_is_new(playbook_dc_name):
@@ -235,10 +239,34 @@ def get_storage_pool_resource_payload(playbook_pool):
     )
 
 
+def add_networks_to_datacenter(playbook_networks, datacenter_uuid):
+    network_uuids = []
+    for network_type in ['vlan', 'vnet']:
+        names = [network['name'] for network in playbook_networks
+                 if network['network_type'].lower() == network_type]
+
+        networks = RESOURCES[network_type].filter(name=('=in=', names))
+
+        uuids = [net.uuid for net in networks]
+        network_uuids += uuids
+
+    body = tacp.ApiUpdateNetworksForDatacenterPayload(network_uuids)
+
+    try:
+        RESOURCES['datacenter'].assign_network(
+            body, datacenter_uuid)
+    except ApiException as e:
+        message = json.loads(e.body)['message']
+        fail_with_reason(message + '\nThe datacenter creation has not been'
+                         ' rolled back. Currently datacenters must be deleted'
+                         ' manually in the ThinkAgile CP portal GUI.')
+
+
 def run_module():
     validate_inputs()
 
-    RESULT['datacenter'] = str(create_datacenter())
+    new_datacenter = create_datacenter()
+    RESULT['datacenter'] = str(new_datacenter)
     RESULT['changed'] = True
 
     MODULE.exit_json(**RESULT)

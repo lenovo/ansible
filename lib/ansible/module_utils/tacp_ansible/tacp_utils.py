@@ -317,6 +317,9 @@ class DatacenterResource(Resource):
     def create(self, body):
         return self.api.create_datacenter_using_post(body)
 
+    def assign_network(self, body, uuid):
+        return self.api.update_networks_to_datacenter_using_put(body, uuid)
+
 
 class UserResource(Resource):
 
