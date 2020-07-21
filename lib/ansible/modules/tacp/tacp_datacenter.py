@@ -276,9 +276,16 @@ def download_templates_to_datacenter(playbook_templates, datacenter_uuid):
         wait_to_download = False if 'wait_to_download' not in\
             playbook_template else bool(playbook_template['wait_to_download'])
 
-        RESOURCES['template'].download_marketplace_template_to_datacenter(
-            body, template_uuid, _wait=wait_to_download, _wait_timeout=600
-        )
+        try:
+            RESOURCES['template'].download_marketplace_template_to_datacenter(
+                body, template_uuid, _wait=wait_to_download, _wait_timeout=1200
+            )
+        except ApiException as e:
+            message = json.loads(e.body)['message']
+            fail_with_reason(message + '\nThe datacenter creation has not been'
+                             ' rolled back. Currently datacenters must be '
+                             'deleted manually in the ThinkAgile CP portal '
+                             'GUI.')
 
 
 def get_marketplace_template_payload(playbook_template, datacenter_uuid):
