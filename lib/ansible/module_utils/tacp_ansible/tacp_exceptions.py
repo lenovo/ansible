@@ -1,3 +1,6 @@
+from tacp.rest import ApiException
+
+
 class ActionTimedOutException(Exception):
     pass
 
@@ -47,4 +50,8 @@ class InvalidDiskNameException(Exception):
 
 
 class InvalidParameterException(Exception):
+    pass
+
+
+class CreateNetworkException(ApiException):
     pass
