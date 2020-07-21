@@ -5,11 +5,12 @@
 
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.tacp_ansible import tacp_utils
-from ansible.module_utils.tacp_ansible.tacp_exceptions import ActionTimedOutException, InvalidActionUuidException
+from ansible.module_utils.tacp_ansible.tacp_exceptions import (
+    ActionTimedOutException, InvalidActionUuidException,
+    CreateNetworkException)
 
 import json
 import tacp
-import sys
 from tacp.rest import ApiException
 from pprint import pprint
 
@@ -155,7 +156,7 @@ options:
       - Example - "192.168.0.0" for the 192.168.0.0/24 network.
     required: False
     type: str
-  subnet_mask:
+  netmask:
     description:
       - The subnet mask for the VNET network.
       - Example - "255.255.255.0" for the 192.168.0.0/24 network.
@@ -207,7 +208,7 @@ options:
       static_bindings:
         description:
           - A list of static DHCP bindings, each binding requires at
-            least an ip_address and mac_address value as a dict.
+            least an ip and mac value as a dict.
         required: False
         type: list
         suboptions:
@@ -217,13 +218,13 @@ options:
                 particular IP address.
             required: false
             type: str
-          ip_address:
+          ip:
             description:
               - The IP address to be bound to the hostname
                 and/or MAC address provided in this entry.
             required: false
             type: str
-          mac_address:
+          mac:
             description:
               - The MAC address to be bound to the IP address
                 provided in this entry.
@@ -255,13 +256,13 @@ options:
           - Valid choices are either "static" or "DHCP".
         required: false
         type: str
-      ip_address:
+      ip:
         description:
           - The IP address of the outside interface.
           - Only valid when address_mode is set to static.
         required: false
         type: str
-      subnet_mask:
+      netmask:
         description:
           - The subnet mask of the outside interface.
           - Only valid when address_mode is set to static.
@@ -300,7 +301,7 @@ EXAMPLES = '''
       network_type: VNET
       autodeploy_nfv: True
       network_address: 192.168.1.0
-      subnet_mask: 255.255.255.0
+      netmask: 255.255.255.0
       gateway: 192.168.1.1
       dhcp:
         dhcp_start: 192.168.1.100
@@ -313,8 +314,8 @@ EXAMPLES = '''
         type: VLAN
         network: Lab-VLAN
         address_mode: static
-        ip_address: 192.168.100.201
-        subnet_mask: 255.255.255.0
+        ip: 192.168.100.201
+        netmask: 255.255.255.0
         gateway: 192.168.100.1
       nfv:
         datacenter: Datacenter1
@@ -332,7 +333,7 @@ EXAMPLES = '''
       network_type: VNET
       autodeploy_nfv: True
       network_address: 192.168.1.0
-      subnet_mask: 255.255.255.0
+      netmask: 255.255.255.0
       gateway: 192.168.1.1
       dhcp:
         dhcp_start: 192.168.1.100
@@ -343,17 +344,17 @@ EXAMPLES = '''
         dns2: 8.8.8.8
         static_bindings:
           - hostname: Host1
-            ip_address: 192.168.1.101
-            mac_address: b4:d1:35:00:0f:f1
+            ip: 192.168.1.101
+            mac: b4:d1:35:00:0f:f1
           - hostname: Host2
-            ip_address: 192.168.1.102
-            mac_address: b4:d1:35:00:0f:f2
+            ip: 192.168.1.102
+            mac: b4:d1:35:00:0f:f2
       routing:
         type: VLAN
         network: Lab-VLAN
         address_mode: static
-        ip_address: 192.168.100.201
-        subnet_mask: 255.255.255.0
+        ip: 192.168.100.201
+        netmask: 255.255.255.0
         gateway: 192.168.100.1
       nfv:
         datacenter: Datacenter1
@@ -392,7 +393,7 @@ def run_module():
         autodeploy_nfv=dict(type='bool', required=False, default=True),
         nfv=dict(type='dict', required=False),
         network_address=dict(type='str', required=False),
-        subnet_mask=dict(type='str', required=False),
+        netmask=dict(type='str', required=False),
         gateway=dict(type='str', required=False),
         dhcp=dict(type='dict', required=False),
         routing=dict(type='dict', required=False)
@@ -450,7 +451,7 @@ def run_module():
 
         elif params['network_type'].upper() == 'VNET':
             if params['state'] == 'present':
-                required_params += ['network_address', 'subnet_mask',
+                required_params += ['network_address', 'netmask',
                                     'gateway', 'dhcp', 'routing']
                 for param in required_params:
                     if not params[param]:
@@ -484,7 +485,7 @@ def run_module():
 
         if module.params['network_type'].upper() == 'VNET':
             base_params = ['autodeploy_nfv',
-                           'network_address', 'subnet_mask', 'gateway']
+                           'network_address', 'netmask', 'gateway']
 
             for param in base_params:
                 if param in module.params.keys():
@@ -514,7 +515,7 @@ def run_module():
                 else:
                     network_params['dhcp'][param] = None
 
-            routing_params = ['network', 'type', 'address_mode', 'ip_address', 'subnet_mask',
+            routing_params = ['network', 'type', 'address_mode', 'ip', 'netmask',
                               'gateway']
             network_params['routing'] = {}
             for param in routing_params:
@@ -566,6 +567,9 @@ def run_module():
             result['api_request_body'] = str(body)
 
         response = vlan_resource.create(body)
+        if not hasattr(response, 'object_uuid'):
+            message = json.loads(response.body)['message']
+            raise CreateNetworkException(message)
 
         result['ansible_module_results'] = vlan_resource.get_by_uuid(
             response.object_uuid
@@ -582,14 +586,14 @@ def run_module():
         static_binding_payloads = []
         try:
             for binding in network_params['dhcp']['static_bindings']:
-                params = ['hostname', 'ip_address', 'mac_address']
+                params = ['hostname', 'ip', 'mac']
                 for param in params:
                     if param not in binding.keys():
                         binding[param] = None
                 payload = tacp.ApiStaticBindingRulePayload(
                     hostname=binding['hostname'],
-                    ip_address=binding['ip_address'],
-                    mac_address=binding['mac_address'])
+                    ip_address=binding['ip'],
+                    mac_address=binding['mac'])
                 static_binding_payloads.append(payload)
         except Exception:
             # If there are no static_bindings we can just move on with an empty list
@@ -607,7 +611,7 @@ def run_module():
         )
 
         params = ['address_mode', 'firewall_override', 'gateway',
-                  'ip_address', 'subnet_mask', 'type']
+                  'ip', 'netmask', 'type']
         for param in params:
             if param not in network_params['routing'].keys():
                 network_params['routing'][param] = None
@@ -616,9 +620,9 @@ def run_module():
             address_mode=network_params['routing']['address_mode'],
             firewall_override_uuid=network_params['routing']['firewall_override_uuid'],
             gateway=network_params['routing']['gateway'],
-            ip_address=network_params['routing']['ip_address'],
+            ip_address=network_params['routing']['ip'],
             network_uuid=network_params['routing']['network_uuid'],
-            subnet_mask=network_params['routing']['subnet_mask'],
+            subnet_mask=network_params['routing']['netmask'],
             type=network_params['routing']['type']
         )
 
@@ -664,16 +668,16 @@ def run_module():
             network_address=network_params['network_address'],
             nfv_instance=nfv_instance,
             routing_service=routing_service,
-            subnet_mask=network_params['subnet_mask']
+            subnet_mask=network_params['netmask']
         )
         if module._verbosity >= 3:
             result['api_request_body'] = str(body)
 
-        response = vnet_resource.create(body)
-        if 'Invalid Request' in str(response):
-            error_message = str(response).split('"message\":\"')[-1][:-3]
-            result['msg'] = error_message
-            module.fail_json(**result)
+        response = vnet_resource.create(body, _wait_timeout=600)
+
+        if not hasattr(response, 'object_uuid'):
+            message = json.loads(response.body)['message']
+            raise CreateNetworkException(message)
 
         result['ansible_module_results'] = vnet_resource.get_by_uuid(
             response.object_uuid
@@ -723,7 +727,7 @@ def run_module():
         non_state_change_inputs = [
             'vlan_tag', 'firewall_override',
             'firewall_profile', 'nfv', 'network_address',
-            'subnet_mask', 'gateway', 'dhcp', 'routing'
+            'netmask', 'gateway', 'dhcp', 'routing'
         ]
 
         bad_inputs_in_playbook = [bad_input for bad_input in
@@ -762,7 +766,10 @@ def run_module():
 
             else:
                 network_params = generate_network_params(module)
-                create_vlan_network(network_params)
+                try:
+                    create_vlan_network(network_params)
+                except CreateNetworkException as e:
+                    fail_with_reason(str(e))
 
         elif module.params['state'] == 'absent':
             if vlan_uuid:
@@ -795,7 +802,10 @@ def run_module():
 
             else:
                 network_params = generate_network_params(module)
-                create_vnet_network(network_params)
+                try:
+                    create_vnet_network(network_params)
+                except CreateNetworkException as e:
+                    fail_with_reason(str(e))
         elif module.params['state'] == 'absent':
             if vnet_uuid:
                 delete_network(

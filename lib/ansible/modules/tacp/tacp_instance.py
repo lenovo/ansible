@@ -93,18 +93,18 @@ options:
         stored in. Only required when creating a new instance.
     required: false
     type: str
-  vcpu_cores:
+  num_cpus:
     description:
       - The number of virtual CPU cores that the application instance
         will have when it is created. Only required when creating a new
         instance.
     required: false
     type: int
-  memory:
+  memory_mb:
     description:
       - The amount of virtual memory (RAM) that the application instance
-        will have when it is created. Can be expressed with various
-        units. Only required when creating a new instance.
+        will have when it is created. Only required when creating a new
+        instance.
     required: false
     type: str
   disks:
@@ -177,11 +177,11 @@ options:
         description:
           - Whether this interface should be automatically assigned
             a MAC address.
-          - Providing a MAC address to the mac_address field sets
+          - Providing a MAC address to the mac field sets
             this value to false.
         required: false
         type: bool
-      mac_address:
+      mac:
         description:
           - A static MAC address to be assigned to the NIC. Should
             not exist on any other interfaces on the network.
@@ -252,8 +252,8 @@ EXAMPLES = '''
       migration_zone: Zone1
       template: CentOS 7.5 (64-bit) - Lenovo Template
       storage_pool: Pool1
-      vcpu_cores: 1
-      memory: 4096GB
+      num_cpus: 1
+      memory_mb: 4096
       disks:
       - name: Disk 0
           size_gb: 50
@@ -274,8 +274,8 @@ EXAMPLES = '''
       migration_zone: Zone1
       template: RHEL 7.4 (Minimal) - Lenovo Template
       storage_pool: Pool1
-      vcpu_cores: 1
-      memory: 8G
+      num_cpus: 1
+      memory_mb: 8192
       disks:
       - name: Disk 0
           size_gb: 50
@@ -299,17 +299,15 @@ EXAMPLES = '''
       migration_zone: Zone1
       template: RHEL 7.4 (Minimal) - Lenovo Template
       storage_pool: Pool1
-      vcpu_cores: 1
-      memory: 8GB
+      num_cpus: 1
+      memory_mb: 8192
       disks:
       - name: Disk 0
           size_gb: 50
           boot_order: 2
-          iops_limit: 200
       - name: Disk 1
           size_gb: 200
           boot_order: 3
-          bandwidth_limit: 10000000
       nics:
       - name: vNIC 0
           type: VLAN
@@ -320,7 +318,7 @@ EXAMPLES = '''
           type: VNET
           network: PXE-VNET
           boot_order: 1
-          mac_address: b4:d1:35:00:00:01
+          mac: b4:d1:35:00:00:01
 
 - name: Create a VM from a custom template without virtio drivers
   tacp_instance:
@@ -331,8 +329,8 @@ EXAMPLES = '''
       migration_zone: Zone1
       template: MyCustomTemplate
       storage_pool: Pool1
-      vcpu_cores: 1
-      memory: 4G
+      num_cpus: 1
+      memory_mb: 4096
       vm_mode: Compatibility
       disks:
       - name: Disk 0
@@ -377,8 +375,8 @@ EXAMPLES = '''
       migration_zone: Zone2
       template: "{{ instance.template }}"
       storage_pool: Pool2
-      vcpu_cores: "{{ instance.vcpu_cores }}"
-      memory: "{{ instance.memory }}"
+      num_cpus: "{{ instance.num_cpus }}"
+      memory_mb: "{{ instance.memory_mb }}"
       disks:
         - name: Disk 0
           size_gb: 100
@@ -387,33 +385,33 @@ EXAMPLES = '''
         - name: vNIC 0
           type: "{{ instance.network_type }}"
           network: "{{ instance.network_name }}"
-          mac_address: "{{ instance.mac_address }}"
+          mac: "{{ instance.mac }}"
           boot_order: 2
   loop:
       - { name: CentOS VM 1,
           state: started,
           template: "CentOS 7.5 (64-bit) - Lenovo Template",
-          vcpu_cores: 2,
-          memory: 4096MB,
+          num_cpus: 2,
+          memory_mb: 4096,
           network_type: VLAN,
           network_name: VLAN-15,
-          mac_address: b4:d1:35:00:0f:f0 }
+          mac: b4:d1:35:00:0f:f0 }
       - { name: RHEL VM 11,
           state: stopped,
           template: "RHEL 7.4 (Minimal) - Lenovo Template",
-          vcpu_cores: 6,
-          memory: 6g,
+          num_cpus: 6,
+          memory_mb: 6144,
           network_type: VNET,
           network_name: Production-VNET,
-          mac_address: b4:d1:35:00:0f:f1 }
+          mac: b4:d1:35:00:0f:f1 }
       - { name: Windows Server 2019 VM 1,
           state: started,
           template: "Windows Server 2019 Standard - Lenovo Template",
-          vcpu_cores: 8,
-          memory: 16GB,
+          num_cpus: 8,
+          memory_mb: 16384,
           network_type: VNET,
           network_name: Internal-VNET,
-          mac_address: b4:d1:35:00:0f:f2 }
+          mac: b4:d1:35:00:0f:f2 }
   loop_control:
       loop_var: instance
 '''
@@ -481,8 +479,8 @@ MODULE_ARGS = {
     'migration_zone': {'type': 'str', 'required': False},
     'storage_pool': {'type': 'str', 'required': False},
     'template': {'type': 'str', 'required': False},
-    'vcpu_cores': {'type': 'int', 'required': False},
-    'memory': {'type': 'str', 'required': False},
+    'num_cpus': {'type': 'int', 'required': False},
+    'memory_mb': {'type': 'int', 'required': False},
     'disks': {'type': 'list', 'required': False},
     'nics': {'type': 'list', 'required': False},
     'vtx_enabled': {'type': 'bool', 'default': True, 'required': False},
@@ -561,7 +559,7 @@ def get_parameters_to_create_new_application(playbook_instance):
             'application_group_uuid': None,
             'networks': None,
             'vcpus': None,
-            'memory': None,
+            'memory_mb': None,
             'vm_mode': None,
             'vtx_enabled': None,
             'auto_recovery_enabled': None,
@@ -636,9 +634,9 @@ def get_parameters_to_create_new_application(playbook_instance):
         network_payloads.append(add_network_payload)
 
     data['networks'] = network_payloads
-    data['vcpus'] = playbook_instance['vcpu_cores']
+    data['vcpus'] = playbook_instance['num_cpus']
     data['memory'] = tacp_utils.convert_memory_abbreviation_to_bytes(
-        playbook_instance['memory'])
+        str(playbook_instance['memory_mb']) + "MB")
     data['vm_mode'] = playbook_instance.get('vm_mode').capitalize()
     data['vtx_enabled'] = playbook_instance.get('vtx_enabled')
     data['auto_recovery_enabled'] = playbook_instance.get(
@@ -802,7 +800,7 @@ def get_parameters_to_create_vnic(datacenter_uuid, playbook_vnic,
     """
     data = {
         'name': None,
-        'mac_address': None,
+        'mac': None,
         'automatic_mac_address': None,
         'network_type': None,
         'network_uuid': None,
@@ -812,10 +810,10 @@ def get_parameters_to_create_vnic(datacenter_uuid, playbook_vnic,
 
     data['name'] = playbook_vnic.get('name')
 
-    data['mac_address'] = playbook_vnic.get('mac_address')
+    data['mac'] = playbook_vnic.get('mac')
 
     data['automatic_mac_address'] = not bool(
-        playbook_vnic.get('mac_address'))
+        playbook_vnic.get('mac'))
 
     network_type = playbook_vnic.get('type').lower()
     if network_type not in ['vnet', 'vlan']:
@@ -865,7 +863,7 @@ def get_add_vnic_payload(vnic_parameters):
         boot_order=vnic_parameters['boot_order'],
         automatic_mac_address=vnic_parameters['automatic_mac_address'],  # noqa
         firewall_override_uuid=vnic_parameters['firewall_override_uuid'],  # noqa
-        mac_address=vnic_parameters['mac_address'],
+        mac_address=vnic_parameters['mac'],
         name=vnic_parameters['name'],
         network_uuid=vnic_parameters['network_uuid'])
 
@@ -891,7 +889,7 @@ def get_add_network_payload(vnic_payload, vnic_uuid):
     network_payload = tacp.ApiCreateOrEditApplicationNetworkOptionsPayload(  # noqa
         automatic_mac_assignment=vnic_payload.automatic_mac_address,
         firewall_override_uuid=vnic_payload.firewall_override_uuid,
-        mac_address=vnic_payload.mac_address,
+        mac_address=vnic_payload.mac,
         name=vnic_payload.name,
         network_uuid=vnic_payload.network_uuid,
         vnic_uuid=vnic_uuid
@@ -1135,7 +1133,7 @@ def get_boot_order_payload(boot_order_entry):
 
 def bad_inputs_for_state_change(playbook_instance):
     non_state_change_inputs = ['datacenter', 'migration_zone', 'storage_pool',
-                               'template', 'vcpu_cores', 'disks', 'nics',
+                               'template', 'num_cpus', 'disks', 'nics',
                                'description', 'application_group']
 
     bad_inputs_in_playbook = [bad_input for bad_input in

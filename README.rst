@@ -127,8 +127,8 @@ Examples
           migration_zone: Zone1
           template: CentOS 7.5 (64-bit) - Lenovo Template
           storage_pool: Pool1
-          vcpu_cores: 1
-          memory: 4096MB
+          num_cpus: 1
+          memory_mb: 4096
           disks:
           - name: Disk 0
             size_gb: 50
@@ -144,13 +144,13 @@ Examples
         tacp_instance:
           api_key: "{{ api_key }}"
           name: Basic_VM2
-          state: started
+          state: shutdown
           datacenter: Datacenter1
           migration_zone: Zone1
           template: RHEL 7.4 (Minimal) - Lenovo Template
           storage_pool: Pool1
-          vcpu_cores: 1
-          memory: 8G
+          num_cpus: 1
+          memory_mb: 8192
           disks:
             - name: Disk 0
               size_gb: 50
@@ -169,22 +169,20 @@ Examples
         tacp_instance:
           api_key: "{{ api_key }}"
           name: Basic_VM3
-          state: shutdown
+          state: stopped
           datacenter: Datacenter1
           migration_zone: Zone1
           template: RHEL 7.4 (Minimal) - Lenovo Template
           storage_pool: Pool1
-          vcpu_cores: 1
-          memory: 8GB
+          num_cpus: 1
+          memory_mb: 8GB
           disks:
             - name: Disk 0
               size_gb: 50
               boot_order: 2
-              iops_limit: 200
             - name: Disk 1
               size_gb: 200
               boot_order: 3
-              bandwidth_limit: 10000000
           nics:
             - name: vNIC 0
               type: VLAN
@@ -195,7 +193,7 @@ Examples
               type: VNET
               network: PXE-VNET
               boot_order: 1
-              mac_address: b4:d1:35:00:00:01
+              mac: b4:d1:35:00:00:01
 
         - name: Restart all of my Basic_VMs on ThinkAgile CP
           tacp_instance:
@@ -224,8 +222,8 @@ Examples
             migration_zone: Zone2
             template: "{{ instance.template }}"
             storage_pool: Pool2
-            vcpu_cores: "{{ instance.vcpu_cores }}"
-            memory: "{{ instance.memory }}"
+            num_cpus: "{{ instance.num_cpus }}"
+            memory_mb: "{{ instance.memory_mb }}"
             disks:
               - name: Disk 0
                 size_gb: 100
@@ -234,33 +232,33 @@ Examples
               - name: vNIC 0
                 type: "{{ instance.network_type }}"
                 network: "{{ instance.network_name }}"
-                mac_address: "{{ instance.mac_address }}"
+                mac: "{{ instance.mac }}"
                 boot_order: 2
           loop:
             - { name: CentOS VM 1,
                 state: started,
                 template: "CentOS 7.5 (64-bit) - Lenovo Template",
-                vcpu_cores: 2,
-                memory: 4096MB,
+                num_cpus: 2,
+                memory_mb: 4096,
                 network_type: VLAN,
                 network_name: VLAN-15,
-                mac_address: b4:d1:35:00:0f:f0 }
+                mac: b4:d1:35:00:0f:f0 }
             - { name: RHEL VM 11,
                 state: stopped,
                 template: "RHEL 7.4 (Minimal) - Lenovo Template",
-                vcpu_cores: 6,
-                memory: 6g,
+                num_cpus: 6,
+                memory_mb: 6144,
                 network_type: VNET,
                 network_name: Production-VNET,
-                mac_address: b4:d1:35:00:0f:f1 }
+                mac: b4:d1:35:00:0f:f1 }
             - { name: Windows Server 2019 VM 1,
                 state: started,
                 template: "Windows Server 2019 Standard - Lenovo Template",
-                vcpu_cores: 8,
-                memory: 16GB,
+                num_cpus: 8,
+                memory_mb: 16384,
                 network_type: VNET,
                 network_name: Internal-VNET,
-                mac_address: b4:d1:35:00:0f:f2 }
+                mac: b4:d1:35:00:0f:f2 }
           loop_control:
             loop_var: instance
 
@@ -296,7 +294,7 @@ Examples
           network_type: VNET
           autodeploy_nfv: True
           network_address: 192.168.1.0
-          subnet_mask: 255.255.255.0
+          netmask: 255.255.255.0
           gateway: 192.168.1.1
           dhcp:
             dhcp_start: 192.168.1.100
@@ -307,24 +305,24 @@ Examples
             dns2: 8.8.8.8
             static_bindings:
               - hostname: Host1
-                ip_address: 192.168.1.101
-                mac_address: b4:d1:35:00:0f:f1
+                ip: 192.168.1.101
+                mac: b4:d1:35:00:0f:f1
               - hostname: Host2
-                ip_address: 192.168.1.102
-                mac_address: b4:d1:35:00:0f:f2
+                ip: 192.168.1.102
+                mac: b4:d1:35:00:0f:f2
           routing:
             type: VLAN
             network: Lab-VLAN
             address_mode: static
-            ip_address: 192.168.100.201
-            subnet_mask: 255.255.255.0
+            ip: 192.168.100.201
+            netmask: 255.255.255.0
             gateway: 192.168.100.1
           nfv:
             datacenter: Datacenter1
             storage_pool: Pool1
             migration_zone: Zone1
             cpu_cores: 1
-            memory: 1G
+            memory_mb: 1G
             auto_recovery: True
 
 Authors
