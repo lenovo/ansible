@@ -67,7 +67,8 @@ module_args = {
                                      'default': False},
     'migration_zones': {'type': 'list', 'required': True},
     'storage_pools': {'type': 'list', 'required': True},
-    'networks': {'type': 'list', 'required': True}
+    'networks': {'type': 'list', 'required': False},
+    'templates': {'type': 'list', 'required': False}
 }
 
 
@@ -90,7 +91,7 @@ RESOURCES = {
     'datacenter': tacp_utils.DatacenterResource(API_CLIENT),
     'migration_zone': tacp_utils.MigrationZoneResource(API_CLIENT),
     'storage_pool': tacp_utils.StoragePoolResource(API_CLIENT),
-    'marketplace_template': tacp_utils.MarketplaceTemplateResource(API_CLIENT),
+    'template': tacp_utils.MarketplaceTemplateResource(API_CLIENT),
     'vlan': tacp_utils.VlanResource(API_CLIENT),
     'vnet': tacp_utils.VnetResource(API_CLIENT)
 }
@@ -112,7 +113,8 @@ def validate_inputs():
         fail_with_reason('There is already a datacenter with the provided name'
                          ' in the organization, cannot create another with'
                          ' the same name.')
-    for resource_type in ['migration_zone', 'storage_pool', 'network']:
+    for resource_type in ['migration_zone', 'storage_pool', 'network',
+                          'template']:
         resources = get_nonexistent_resources_of_type(resource_type)
         if resources:
             nonexistent_resources[resource_type] = resources
@@ -134,8 +136,12 @@ def create_datacenter():
         message = json.loads(e.body)['message']
         fail_with_reason(message)
 
-    if playbook_dc['networks']:
+    if 'networks' in playbook_dc:
         add_networks_to_datacenter(playbook_dc['networks'], datacenter_uuid)
+
+    if 'templates' in playbook_dc:
+        download_templates_to_datacenter(playbook_dc['templates'],
+                                         datacenter_uuid)
 
     return RESOURCES['datacenter'].get_by_uuid(
         datacenter_uuid)
@@ -147,7 +153,7 @@ def playbook_dc_is_new(playbook_dc_name):
 
 def get_nonexistent_resources_of_type(playbook_resource):
     nonexistent_resources = []
-    if playbook_resource in ['migration_zone', 'storage_pool']:
+    if playbook_resource in ['migration_zone', 'storage_pool', 'template']:
         existing_resources = [resource.name for resource in
                               RESOURCES[playbook_resource].filter()]
 
@@ -262,11 +268,55 @@ def add_networks_to_datacenter(playbook_networks, datacenter_uuid):
                          ' manually in the ThinkAgile CP portal GUI.')
 
 
+def download_templates_to_datacenter(playbook_templates, datacenter_uuid):
+    for playbook_template in playbook_templates:
+        body, template_uuid = get_marketplace_template_payload(
+            playbook_template, datacenter_uuid)
+
+        wait_to_download = False if 'wait_to_download' not in\
+            playbook_template else bool(playbook_template['wait_to_download'])
+
+        RESOURCES['template'].download_marketplace_template_to_datacenter(
+            body, template_uuid, _wait=wait_to_download, _wait_timeout=600
+        )
+
+
+def get_marketplace_template_payload(playbook_template, datacenter_uuid):
+    marketplace_template = RESOURCES['template'].get_by_name(
+        playbook_template['name'])
+
+    name = marketplace_template.name if 'new_name' not in playbook_template \
+        else playbook_template['new_name']
+
+    description = marketplace_template.description if 'description' \
+        not in playbook_template else playbook_template['description']
+
+    allocated_cpus = marketplace_template.default_cpus if 'cpu_cores' \
+        not in playbook_template else playbook_template['cpu_cores']
+
+    allocated_memory_bytes = marketplace_template.default_memory_bytes if \
+        'memory_mb' not in playbook_template else \
+        tacp_utils.convert_memory_abbreviation_to_bytes("{}MB".format(
+            playbook_template['cpu_cores']))
+
+    payload = tacp.ApiMarketplaceTemplatePayload(
+        allocated_cpus=allocated_cpus,
+        allocated_memory_bytes=allocated_memory_bytes,
+        datacenter_uuid=datacenter_uuid,
+        description=description,
+        name=name,
+        uuid=marketplace_template.uuid,
+        version=marketplace_template.version
+    )
+
+    return payload, marketplace_template.uuid
+
+
 def run_module():
     validate_inputs()
 
     new_datacenter = create_datacenter()
-    RESULT['datacenter'] = str(new_datacenter)
+    RESULT['datacenter'] = new_datacenter.to_dict()
     RESULT['changed'] = True
 
     MODULE.exit_json(**RESULT)
