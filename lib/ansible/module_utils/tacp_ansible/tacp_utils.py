@@ -228,6 +228,9 @@ class ApplicationUpdateResource(Resource):
     def create_vnic(self, body, uuid):
         return self.api.create_application_vnic_using_post(body, uuid)
 
+    def delete_vnic(self, uuid, vnic_uuid):
+        return self.api.delete_application_vnic_using_delete(uuid, vnic_uuid)
+
     def edit_boot_order(self, body, uuid):
         return self.api.edit_application_boot_order_using_put(body, uuid)
 

@@ -264,7 +264,7 @@ EXAMPLES = '''
           network: VNET-TEST
           boot_order: 2
 
-- name: Create a shutdown VM with multiple disks and set its NIC to the first 
+- name: Create a shutdown VM with multiple disks and set its NIC to the first
         boot device
   tacp_instance:
       api_key: "{{ api_key }}"
@@ -538,6 +538,13 @@ def fail_and_rollback_instance_creation(reason, instance):
     MODULE.fail_json(**RESULT)
 
 
+def fail_and_rollback_vnic_addition(reason, instance, vnic_uuids):
+    RESULT['msg'] = reason + "\n Rolled back NIC additions."
+    for vnic_uuid in vnic_uuids:
+        RESOURCES['update_app'].delete_vnic(instance.uuid, vnic_uuid)
+    MODULE.fail_json(**RESULT)
+
+
 def get_parameters_to_create_new_application(playbook_instance):
     """Given the input configuration for an instance, generate
         parameters for creating the appropriate payload elsewhere.
@@ -743,6 +750,42 @@ def add_playbook_vnics(playbook_vnics, instance):
             add_vnic_to_instance(playbook_vnic, instance)
 
 
+def add_playbook_vnics_to_preexisting_instance(playbook_vnics, instance):
+    """Given a list of vnics as dicts, add them to the preexisting instance
+    if a vnic with the same name is not already present on the instance,
+    including vnics added during the runtime of this function. Any failures
+    will result in rolling back any new vnic additions here.
+
+    Args:
+        playbook_vnics (list): The vNICs from the playbook to be added.
+        instance (ApiApplicationInstancePropertiesPayload): A payload
+            containing the properties of the instance
+    """
+
+    created_vnic_uuids = []
+    for playbook_vnic in playbook_vnics:
+        if playbook_vnic['state'] == 'present':
+            try:
+                add_vnic_to_instance(playbook_vnic, instance)
+            except tacp_exceptions.AddVnicException as e:
+                fail_and_rollback_vnic_addition(
+                    reason="Failed to add NIC {}: {}.".format(
+                        playbook_vnic['name'], str(e)),
+                    instance=instance,
+                    vnic_uuids=created_vnic_uuids)
+
+            instance = RESOURCES['app'].get_by_uuid(instance.uuid)
+            vnic_uuid = next(
+                device.vnic_uuid for device in instance.boot_order
+                if device.name == playbook_vnic['name'])
+            created_vnic_uuids.append(vnic_uuid)
+        elif playbook_vnic['state'] == 'absent':
+            vnic_uuid = next(
+                device.vnic_uuid for device in instance.boot_order
+                if device.name == playbook_vnic['name'])
+            RESOURCES['update_app'].delete_vnic(instance.uuid, vnic_uuid)
+
+
 def add_vnic_to_instance(playbook_vnic, instance):
     """Adds a vNIC to an instance if a vNIC with the same name is not already
         present in that instance.
@@ -755,13 +798,9 @@ def add_vnic_to_instance(playbook_vnic, instance):
     """
     datacenter_uuid = instance.datacenter_uuid
 
-    failure_reason = None
-    try:
-        parameters_to_create_vnic = get_parameters_to_create_vnic(
-            datacenter_uuid,
-            playbook_vnic)
-    except Exception as e:
-        fail_and_rollback_instance_creation(str(e), instance)
+    parameters_to_create_vnic = get_parameters_to_create_vnic(
+        datacenter_uuid,
+        playbook_vnic)
 
     vnic_payload = get_add_vnic_payload(parameters_to_create_vnic)
     vnic_uuid = str(uuid4())
@@ -770,12 +809,10 @@ def add_vnic_to_instance(playbook_vnic, instance):
     response = RESOURCES['update_app'].create_vnic(body=network_payload,
                                                    uuid=instance.uuid)
 
-    if hasattr(response, 'body'):
-        response_body = json.loads(response.body)
-
-        if "Invalid Request" in response_body['code']:
-            fail_and_rollback_instance_creation(response_body['message'],
-                                                instance)
+    if not hasattr(response, 'object_uuid'):
+        message = json.loads(response.body)['message']
+        if post_vm_creation:
+            raise tacp_exceptions.AddVnicException(message)
 
 
 def get_parameters_to_create_vnic(datacenter_uuid, playbook_vnic,
@@ -790,10 +827,10 @@ def get_parameters_to_create_vnic(datacenter_uuid, playbook_vnic,
             if applicable. Defaults to None.
 
     Raises:
-        tacp_exceptions.InvalidVnicNameException
-        tacp_exceptions.InvalidNetworkTypeException
-        tacp_exceptions.InvalidNetworkNameException
-        tacp_exceptions.InvalidFirewallOverrideNameException
+        InvalidVnicNameException
+        InvalidNetworkTypeException
+        InvalidNetworkNameException
+        InvalidFirewallOverrideNameException
 
     Returns:
         dict: The parameters necessary to create an ApiAddVnicPayload.
@@ -889,7 +926,7 @@ def get_add_network_payload(vnic_payload, vnic_uuid):
     network_payload = tacp.ApiCreateOrEditApplicationNetworkOptionsPayload(  # noqa
         automatic_mac_assignment=vnic_payload.automatic_mac_address,
         firewall_override_uuid=vnic_payload.firewall_override_uuid,
-        mac_address=vnic_payload.mac,
+        mac_address=vnic_payload.mac_address,
         name=vnic_payload.name,
         network_uuid=vnic_payload.network_uuid,
         vnic_uuid=vnic_uuid
@@ -959,10 +996,10 @@ def get_disk_payload(playbook_disk):
             Ansible playbook
 
     Raises:
-        tacp_exceptions.InvalidDiskBandwidthLimitException
-        tacp_exceptions.InvalidDiskIopsLimitException
-        tacp_exceptions.InvalidDiskSizeException
-        tacp_exceptions.InvalidDiskNameException
+        InvalidDiskBandwidthLimitException
+        InvalidDiskIopsLimitException
+        InvalidDiskSizeException
+        InvalidDiskNameException
 
     Returns:
         ApiDiskSizeAndLimitPayload: The populated payload object to be provided
@@ -1133,7 +1170,7 @@ def get_boot_order_payload(boot_order_entry):
 
 def bad_inputs_for_state_change(playbook_instance):
     non_state_change_inputs = ['datacenter', 'migration_zone', 'storage_pool',
-                               'template', 'num_cpus', 'disks', 'nics',
+                               'template', 'num_cpus', 'disks',
                                'description', 'application_group']
 
     bad_inputs_in_playbook = [bad_input for bad_input in
@@ -1142,6 +1179,61 @@ def bad_inputs_for_state_change(playbook_instance):
                               ]
 
     return bad_inputs_in_playbook
+
+
+def validate_nic_inputs(playbook_nics, preexisting_instance=None):
+    checks = {nics_names_are_unique:
+              'All NICs of an instance must have unique names.',
+              nics_have_valid_networks:
+              'NICs must be assigned to existing VLAN or VNET networks.'}
+
+    preexisting_instance_checks = {
+        boot_order_is_not_specified:
+        'Boot order cannot be specified for NICs being added to a preexisting '
+        'instance.'
+    }
+
+    if preexisting_instance:
+        checks.update(preexisting_instance_checks)
+
+    for check, fail_reason in checks.items():
+        if preexisting_instance:
+            result = check(playbook_nics, instance=preexisting_instance)
+        else:
+            result = check(playbook_nics)
+
+        if not result:
+            fail_with_reason(fail_reason)
+
+
+def nics_names_are_unique(playbook_nics, instance=None):
+    all_names = []
+    if instance:
+        all_names = [device.name for device in instance.boot_order
+                     if device.vnic_uuid]
+
+    playbook_names = [nic['name']
+                      for nic in playbook_nics if nic.get('state') != 'absent']
+    all_names += playbook_names
+
+    return len(all_names) == len(set(all_names))
+
+
+def nics_have_valid_networks(playbook_nics, **kwargs):
+    networks = {'vnet': [vnet.name for vnet in RESOURCES['vnet'].filter()],
+                'vlans': [vlan.name for vlan in RESOURCES['vlan'].filter()]}
+
+    for nic in playbook_nics:
+        if 'state' in nic:
+            if nic['state'] == 'absent':
+                continue
+        if nic['network'] not in networks[nic['type'].lower()]:
+            return False
+    return True
+
+
+def boot_order_is_not_specified(playbook_nics, **kwargs):
+    return not any(['boot_order' in nic for nic in playbook_nics])
 
 
 def run_module():
@@ -1155,6 +1247,11 @@ def run_module():
 
     instance = RESOURCES['app'].get_by_name(instance_name)
     if instance:
+        if playbook_instance['state'] == PlaybookState.ABSENT:
+            RESOURCES['app'].delete(instance.uuid)
+            RESULT['changed'] = True
+            MODULE.exit_json(**RESULT)
+
         bad_inputs = bad_inputs_for_state_change(
             playbook_instance)
         if bad_inputs:
@@ -1164,10 +1261,12 @@ def run_module():
                 " - the following parameter(s) are invalid since instance {} "
                 "already exists: {}".format(instance_name,
                                             ", ".join(bad_inputs)))
-        if playbook_instance['state'] == PlaybookState.ABSENT:
-            RESOURCES['app'].delete(instance.uuid)
-            RESULT['changed'] = True
-            MODULE.exit_json(**RESULT)
+
+        if 'nics' in playbook_instance:
+            validate_nic_inputs(playbook_instance['nics'], instance)
+            add_playbook_vnics_to_preexisting_instance(
+                playbook_instance['nics'], instance)
+
     else:
         if playbook_instance['state'] == PlaybookState.ABSENT:
             MODULE.exit_json(**RESULT)
@@ -1175,7 +1274,9 @@ def run_module():
 
         instance = RESOURCES['app'].get_by_name(instance_name)
 
-        add_playbook_vnics(playbook_instance['nics'], instance)
+        if 'nics' in playbook_instance:
+            validate_nic_inputs(playbook_instance['nics'])
+            add_playbook_vnics(playbook_instance['nics'], instance)
         add_playbook_disks(playbook_instance['disks'], instance)
 
         update_boot_order(playbook_instance)
