@@ -1,7 +1,19 @@
 #!/usr/bin/python
 
-# Copyright: (c) 2020, Lenovo
-# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+# Copyright (C) 2020 Lenovo.  All rights reserved.
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from ansible.module_utils.basic import AnsibleModule
 
@@ -124,6 +136,18 @@ options:
             name of a disk in the template).
         required: true
         type: str
+      bandwidth_limit:
+        description:
+          - A limit to the bandwidth usage allowed for this disk.
+            Must be at least 5000000 (5 Mbps).
+        required: false
+        type: int
+      iops_limit:
+        description:
+          - A limit to the total IOPS allowed for this disk.
+            Must be at least 50.
+        required: false
+        type: int
       size_gb:
         description:
           - The size of the disk in GB. Can be expressed as a float.
@@ -264,7 +288,7 @@ EXAMPLES = '''
           network: VNET-TEST
           boot_order: 2
 
-- name: Create a shutdown VM with multiple disks and set its NIC to the first 
+- name: Create a shutdown VM with multiple disks and set its NIC to the first
         boot device
   tacp_instance:
       api_key: "{{ api_key }}"
@@ -969,13 +993,19 @@ def get_disk_payload(playbook_disk):
             to the function that actually creates the disk.
     """
 
-    if 'bandwidth_limit' in playbook_disk:
-        raise tacp_exceptions.InvalidParameterException(
-            'Invalid disk parameter "bandwidth_limit" provided.')
+    bandwidth_limit = playbook_disk.get('bandwidth_limit')
+    if bandwidth_limit:
+        if int(bandwidth_limit) < MINIMUM_BW_FIVE_MBPS_IN_BYTES:
+            raise tacp_exceptions.InvalidDiskBandwidthLimitException(
+                'Could not add disk to instance; disks must have a bandwidth limit of at least 5 MBps (5000000).'  # noqa
+        )
 
-    if 'iops_limit' in playbook_disk:
-        raise tacp_exceptions.InvalidParameterException(
-            'Invalid disk parameter "iops_limit" provided.')
+    iops_limit = playbook_disk.get('iops_limit')
+    if iops_limit:
+        if int(iops_limit) < MINIMUM_IOPS:
+            raise tacp_exceptions.InvalidDiskIopsLimitException(
+                'Could not add disk to instance; disks must have a total IOPS limit of at least 50.'  # noqa
+        )
 
     size_gb = playbook_disk.get('size_gb')
     if not size_gb:
@@ -995,7 +1025,9 @@ def get_disk_payload(playbook_disk):
     disk_payload = tacp.ApiDiskSizeAndLimitPayload(
         name=name,
         size=size_bytes,
-        uuid=str(uuid4())
+        uuid=str(uuid4()),
+        iops_limit=iops_limit,
+        bandwidth_limit=bandwidth_limit
     )
 
     return disk_payload
@@ -1029,10 +1061,18 @@ def update_default_disk(playbook_disk, instance):
             target_disk_size_bytes)
 
     if 'bandwidth_limit' in playbook_disk:
-        fail_with_reason('Invalid disk parameter "bandwidth_limit" provided.')
+        RESOURCES['update_app'].edit_disk_bw_limit(
+            existing_disk.uuid,
+            instance.uuid,
+            playbook_disk['bandwidth_limit']
+        )
 
     if 'iops_limit' in playbook_disk:
-        fail_with_reason('Invalid disk parameter "iops_limit" provided.')
+        RESOURCES['update_app'].edit_disk_iops_limit(
+            existing_disk.uuid,
+            instance.uuid,
+            playbook_disk['iops_limit']
+        )
 
 
 def update_boot_order(playbook_instance):
