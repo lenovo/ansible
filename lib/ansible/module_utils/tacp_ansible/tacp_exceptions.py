@@ -53,5 +53,9 @@ class InvalidParameterException(Exception):
     pass
 
 
+class AddVnicException(ApiException):
+    pass
+
+
 class CreateNetworkException(ApiException):
     pass
