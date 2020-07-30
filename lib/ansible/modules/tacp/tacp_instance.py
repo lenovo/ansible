@@ -835,7 +835,7 @@ def add_vnic_to_instance(playbook_vnic, instance):
 
     if not hasattr(response, 'object_uuid'):
         message = json.loads(response.body)['message']
-        if post_vm_creation:
+        if message:
             raise tacp_exceptions.AddVnicException(message)
 
 
