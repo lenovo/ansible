@@ -15,16 +15,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import json
+import tacp
+
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.tacp_ansible import tacp_utils
 from ansible.module_utils.tacp_ansible.tacp_exceptions import (
-    ActionTimedOutException, InvalidActionUuidException,
-    CreateNetworkException)
-
-import json
-import tacp
+    ActionTimedOutException, CreateNetworkException,
+    InvalidActionUuidException,
+)
 from tacp.rest import ApiException
-from pprint import pprint
+
 
 ANSIBLE_METADATA = {
     'metadata_version': '1.1',

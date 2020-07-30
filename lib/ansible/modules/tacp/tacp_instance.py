@@ -15,17 +15,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from ansible.module_utils.basic import AnsibleModule
-
-from ansible.module_utils.tacp_ansible.tacp_constants import (
-    PlaybookState, ApiState)
-from ansible.module_utils.tacp_ansible import tacp_exceptions
-from ansible.module_utils.tacp_ansible import tacp_utils
-
-import tacp
-from tacp.rest import ApiException
 import json
 from uuid import uuid4
+
+import tacp
+from ansible.module_utils.basic import AnsibleModule
+from ansible.module_utils.tacp_ansible import tacp_exceptions, tacp_utils
+from ansible.module_utils.tacp_ansible.tacp_constants import (
+    ApiState, PlaybookState
+)
+
 
 ANSIBLE_METADATA = {
     'metadata_version': '1.1',
