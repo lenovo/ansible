@@ -3,11 +3,11 @@
 # Copyright: (c) 2020, Lenovo
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
+import json
+
+import tacp
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.tacp_ansible import tacp_utils
-
-import json
-import tacp
 from tacp.rest import ApiException
 
 ANSIBLE_METADATA = {
@@ -18,7 +18,7 @@ ANSIBLE_METADATA = {
 
 DOCUMENTATION = '''
 ---
-module: tacp_info
+module: tacp_datacenter
 
 short_description: Get facts about various resources in ThinkAgile CP.
 

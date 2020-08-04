@@ -15,12 +15,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import tacp
+
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.tacp_ansible import tacp_utils
 from ansible.module_utils.tacp_ansible.tacp_exceptions import UuidNotFoundException  # noqa
-
-
-import tacp
 from tacp.rest import ApiException
 
 ANSIBLE_METADATA = {
