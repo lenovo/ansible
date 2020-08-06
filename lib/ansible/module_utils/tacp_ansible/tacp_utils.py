@@ -136,10 +136,11 @@ class Resource(object):
                 if op not in allowed:
                     raise Exception('Invalid operator "{}". '
                                     'Allowed: {}'.format(op, allowed))
-                if len(value) == 0:
-                    raise Exception('Must provide at least one value')
-
                 value = value[0]
+                if len(value) == 0:
+                    # no values no querystring
+                    return ''
+
                 if op in ('=in=', '=out='):
                     value = ','.join(map(lambda v: '"{}"'.format(v), value))
                     value = '({})'.format(value)
