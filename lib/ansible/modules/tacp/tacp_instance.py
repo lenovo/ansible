@@ -1262,6 +1262,8 @@ def nics_have_valid_networks(playbook_nics, **kwargs):
     networks = {'vnet': [vnet.name for vnet in RESOURCES['vnet'].filter()],
                 'vlans': [vlan.name for vlan in RESOURCES['vlan'].filter()]}
 
+    networks['vlan'] = networks['vlans']
+
     for nic in playbook_nics:
         if 'state' in nic:
             if nic['state'] == 'absent':
