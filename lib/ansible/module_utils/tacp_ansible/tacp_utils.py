@@ -85,6 +85,10 @@ def wait_to_complete(method):
     return wrapper
 
 
+class _ResourceFilterMissingValues(Exception):
+    pass
+
+
 class Resource(object):
     resource_class = None
 
@@ -142,8 +146,7 @@ class Resource(object):
 
                 value = value_slice[0]
                 if len(value) == 0:
-                    # no values no querystring
-                    return ''
+                    raise _ResourceFilterMissingValues
 
                 if op in ('=in=', '=out='):
                     value = ','.join(map(lambda v: '"{}"'.format(v), value))
@@ -178,7 +181,10 @@ class Resource(object):
         if method is None:
             raise Exception('Invalid self.filter_method')
 
-        return method(**self.get_filters_kws(**filters))
+        try:
+            return method(**self.get_filters_kws(**filters))
+        except _ResourceFilterMissingValues:
+            return []
 
     def get_by_uuid(self, uuid):
         if self.uuid_method is None:
