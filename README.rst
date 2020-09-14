@@ -33,7 +33,7 @@ Download this git respository.
 
 The tacp modules and module_utils files can be added to any of the following dfirectories:
 
-- any directory added to the ``ANSIBLE_LIBRARY`` environment variable (``$ANSIBLE_LIBRARY`` takes a colon-separated list like ``$PATH``)
+- any directory added to the ``ANSIBLE_LIBRARY`` environment variable (``$ANSIBLE_LIBRARY`` takes a colon-separated list like ``$PATH``). If this method is used, a ``ANSIBLE_MODULE_UTILS`` environment variable must also be set pointing to the copied ``module_utils`` directory.
 
 - ``~/.ansible/plugins/``
 
