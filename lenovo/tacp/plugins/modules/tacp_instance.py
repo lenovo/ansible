@@ -17,10 +17,10 @@
 
 from ansible.module_utils.basic import AnsibleModule
 
-from ansible.module_utils.tacp_ansible.tacp_constants import (
+from ansible_collections.lenovo.tacp.plugins.module_utils.tacp_constants import (
     PlaybookState, ApiState)
-from ansible.module_utils.tacp_ansible import tacp_exceptions
-from ansible.module_utils.tacp_ansible import tacp_utils
+from ansible_collections.lenovo.tacp.plugins.module_utils import tacp_exceptions
+from ansible_collections.lenovo.tacp.plugins.module_utils import tacp_utils
 
 import tacp
 from tacp.rest import ApiException

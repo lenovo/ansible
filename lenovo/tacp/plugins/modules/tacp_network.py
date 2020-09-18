@@ -16,8 +16,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.tacp_ansible import tacp_utils
-from ansible.module_utils.tacp_ansible.tacp_exceptions import ActionTimedOutException, InvalidActionUuidException
+from ansible_collections.lenovo.tacp.plugins.module_utils import tacp_utils
+from ansible_collections.lenovo.tacp.plugins.module_utils.tacp_exceptions import ActionTimedOutException, InvalidActionUuidException
 
 import json
 import tacp
