@@ -70,9 +70,9 @@ class InvalidParameterException(Exception):
     pass
 
 
-class AddVnicException(ApiException):
+class CreateNetworkException(ApiException):
     pass
 
 
-class CreateNetworkException(ApiException):
+class AddVnicException(ApiException):
     pass
