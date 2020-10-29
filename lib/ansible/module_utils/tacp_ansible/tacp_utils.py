@@ -33,7 +33,7 @@ from time import sleep
 
 def get_configuration(api_key, portal_url):
     configuration = tacp.Configuration()
-    configuration.host = portal_url
+    configuration.host = portal_url.strip().rstrip("/")
     configuration.api_key_prefix['Authorization'] = 'Bearer'
     configuration.api_key['Authorization'] = api_key
     return configuration

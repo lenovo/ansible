@@ -539,7 +539,7 @@ API_CLIENT = tacp.ApiClient(CONFIGURATION)
 
 RESOURCES = {
     'app': tacp_utils.ApplicationResource(API_CLIENT),
-    'app_group': tacp_utils.ApplicationGroupResource(API_CLIENT),
+    'application_group': tacp_utils.ApplicationGroupResource(API_CLIENT),
     'datacenter': tacp_utils.DatacenterResource(API_CLIENT),
     'migration_zone': tacp_utils.MigrationZoneResource(API_CLIENT),
     'storage_pool': tacp_utils.StoragePoolResource(API_CLIENT),
@@ -620,11 +620,11 @@ def get_parameters_to_create_new_application(playbook_instance):
         data['boot_order'] = template_boot_order
 
     if playbook_instance['application_group']:
-        uuid = RESOURCES['app_group'].get_uuid_by_name(
+        uuid = RESOURCES['application_group'].get_uuid_by_name(
             playbook_instance['application_group']
         )
         if uuid is None:
-            resp = RESOURCES['app_group'].create(
+            resp = RESOURCES['application_group'].create(
                 playbook_instance['application_group'],
                 data['datacenter_uuid']
             )
@@ -745,10 +745,12 @@ def update_instance_state(instance, current_state, target_state):
     if current_state in [ApiState.RUNNING,
                          ApiState.SHUTDOWN,
                          ApiState.PAUSED]:
-        for action in ACTIONS_TO_CHANGE_FROM_API_STATE_TO_PLAYBOOK_STATE[
-                (current_state, target_state)]:
-            instance_power_action(instance, action)
-        RESULT['changed'] = True
+        actions = ACTIONS_TO_CHANGE_FROM_API_STATE_TO_PLAYBOOK_STATE[
+            (current_state, target_state)]
+        if actions:
+            for action in actions:
+                instance_power_action(instance, action)
+            RESULT['changed'] = True
 
 
 def add_playbook_vnics(playbook_vnics, instance):
@@ -787,7 +789,7 @@ def add_playbook_vnics_to_preexisting_instance(playbook_vnics, instance):
 
     created_vnic_uuids = []
     for playbook_vnic in playbook_vnics:
-        if playbook_vnic['state'] == 'present':
+        if playbook_vnic.get('state') != 'absent':
             try:
                 add_vnic_to_instance(playbook_vnic, instance)
             except tacp_exceptions.AddVnicException as e:
@@ -802,11 +804,6 @@ def add_playbook_vnics_to_preexisting_instance(playbook_vnics, instance):
                 device.vnic_uuid for device in instance.boot_order
                 if device.name == playbook_vnic['name'])
             created_vnic_uuids.append(vnic_uuid)
-        elif playbook_vnic['state'] == 'absent':
-            vnic_uuid = next(
-                device.vnic_uuid for device in instance.boot_order
-                if device.name == playbook_vnic['name'])
-            RESOURCES['update_app'].delete_vnic(instance.uuid, vnic_uuid)
 
 
 def add_vnic_to_instance(playbook_vnic, instance):
@@ -993,7 +990,6 @@ def add_disk_to_instance(playbook_disk, instance):
         instance (ApiApplicationInstancePropertiesPayload): A payload
             containing the properties of the instance
     """
-    failure_reason = None
 
     try:
         disk_payload = get_disk_payload(playbook_disk)
@@ -1111,7 +1107,7 @@ def update_default_disk(playbook_disk, instance):
         )
 
 
-def update_boot_order(playbook_instance):
+def update_boot_order(playbook_instance, instance):
     """Updates the boot order of an instance using the boot order information
         provided in the Ansible playbook input.
 
@@ -1119,12 +1115,17 @@ def update_boot_order(playbook_instance):
         playbook_instance (dict): The specified instance configuration from
         the playbook input
     """
+
     boot_order_payload = get_full_boot_order_payload_for_playbook(
         playbook_instance)
     instance_uuid = RESOURCES['app'].get_by_name(
         playbook_instance['name']).uuid
 
-    RESOURCES['update_app'].edit_boot_order(boot_order_payload, instance_uuid)
+    try:
+        RESOURCES['update_app'].edit_boot_order(
+            boot_order_payload, instance_uuid)
+    except Exception as e:
+        fail_with_reason(e)
 
 
 def get_full_boot_order_payload_for_playbook(playbook_instance):
@@ -1207,58 +1208,27 @@ def get_boot_order_payload(boot_order_entry):
     return boot_order_payload
 
 
-def bad_inputs_for_state_change(playbook_instance):
-    non_state_change_inputs = ['datacenter', 'migration_zone', 'storage_pool',
-                               'template', 'num_cpus', 'disks',
-                               'description', 'application_group']
-
-    bad_inputs_in_playbook = [bad_input for bad_input in
-                              non_state_change_inputs
-                              if playbook_instance[bad_input]
-                              ]
-
-    return bad_inputs_in_playbook
-
-
-def validate_nic_inputs(playbook_nics, preexisting_instance=None):
+def validate_nic_inputs(playbook_nics):
     checks = {nics_names_are_unique:
               'All NICs of an instance must have unique names.',
               nics_have_valid_networks:
               'NICs must be assigned to existing VLAN or VNET networks.'}
 
-    preexisting_instance_checks = {
-        boot_order_is_not_specified:
-        'Boot order cannot be specified for NICs being added to a preexisting '
-        'instance.'
-    }
-
-    if preexisting_instance:
-        checks.update(preexisting_instance_checks)
-
     for check, fail_reason in checks.items():
-        if preexisting_instance:
-            result = check(playbook_nics, instance=preexisting_instance)
-        else:
-            result = check(playbook_nics)
+        result = check(playbook_nics)
 
         if not result:
             fail_with_reason(fail_reason)
 
 
-def nics_names_are_unique(playbook_nics, instance=None):
-    all_names = []
-    if instance:
-        all_names = [device.name for device in instance.boot_order
-                     if device.vnic_uuid]
-
+def nics_names_are_unique(playbook_nics):
     playbook_names = [nic['name']
                       for nic in playbook_nics if nic.get('state') != 'absent']
-    all_names += playbook_names
 
-    return len(all_names) == len(set(all_names))
+    return len(playbook_names) == len(set(playbook_names))
 
 
-def nics_have_valid_networks(playbook_nics, **kwargs):
+def nics_have_valid_networks(playbook_nics):
     networks = {'vnet': [vnet.name for vnet in RESOURCES['vnet'].filter()],
                 'vlans': [vlan.name for vlan in RESOURCES['vlan'].filter()]}
 
@@ -1273,8 +1243,149 @@ def nics_have_valid_networks(playbook_nics, **kwargs):
     return True
 
 
-def boot_order_is_not_specified(playbook_nics, **kwargs):
-    return not any(['boot_order' in nic for nic in playbook_nics])
+def boot_order_needs_update(playbook_instance, instance):
+
+    instance_nics = {
+        nic.name: nic.order for nic in instance.boot_order if nic.vnic_uuid}
+
+    if 'nics' in playbook_instance:
+        for nic in playbook_instance['nics']:
+            if nic.get('state') != 'absent':
+                if not instance_nics.get(nic['name']):
+                    fail_with_reason(
+                        "NIC {} was not properly configured, "
+                        "probably due to a bad input. Please check the input "
+                        "configuration and try again.".format(nic['name']))
+                if nic['boot_order'] != instance_nics.get(nic['name']):
+                    return True
+
+    instance_disks = {disk.name: disk.order for disk in instance.boot_order
+                      if disk.disk_uuid}
+
+    if 'disks' in playbook_instance:
+        for disk in playbook_instance['disks']:
+            if disk.get('state') != 'absent':
+                if not instance_disks.get(disk['name']):
+                    fail_with_reason(
+                        "Disk {} was not properly configured, "
+                        "probably due to a bad input. Please check the input "
+                        "configuration and try again.".format(disk['name']))
+                if disk['boot_order'] != instance_disks.get(disk['name']):
+                    return True
+    return False
+
+
+def playbook_parameters_not_matching_instance_state(
+        playbook_instance, instance):
+    parameters_not_matching = []
+
+    parameter_matches = {
+        'datacenter': playbook_datacenter_matches_instance_datacenter,
+        'storage_pool': playbook_storage_pool_matches_instance_storage_pool,
+        'vtx_enabled': playbook_vtx_matches_instance_vtx,
+        'migration_zone': playbook_migration_zone_matches_instance_migration_zone,  # noqa
+        'template': playbook_template_matches_instance_template,
+        'num_cpus': playbook_num_cpus_matches_instance_num_cpus,
+        'memory_mb': playbook_memory_mb_matches_instance_memory_mb,
+        'application_group': playbook_application_group_matches_instance_application_group,  # noqa
+        'vm_mode': playbook_vm_mode_matches_instance_vm_mode
+    }
+    for parameter in playbook_instance:
+        if parameter in parameter_matches and playbook_instance.get(parameter):
+            if not parameter_matches[parameter](
+                    playbook_instance[parameter], instance):
+                parameters_not_matching.append(parameter)
+
+    return parameters_not_matching
+
+
+def playbook_datacenter_matches_instance_datacenter(value, instance):
+    return getattr(RESOURCES['datacenter'].get_by_name(value), 'uuid', None) \
+        == instance.datacenter_uuid
+
+
+def playbook_storage_pool_matches_instance_storage_pool(value, instance):
+    return getattr(RESOURCES['storage_pool'].get_by_name(value), 'uuid',
+                   None) \
+        == instance.flash_pool_uuid
+
+
+def playbook_vtx_matches_instance_vtx(value, instance):
+    return value == instance.hardware_assisted_virtualization_enabled
+
+
+def playbook_migration_zone_matches_instance_migration_zone(value, instance):
+    return getattr(RESOURCES['migration_zone'].get_by_name(value), 'uuid',
+                   None) \
+        == instance.migration_zone_uuid
+
+
+def playbook_template_matches_instance_template(value, instance):
+    return value == \
+        getattr(RESOURCES['template'].get_by_uuid(
+            instance.template_uuid), 'name', None)
+
+
+def playbook_num_cpus_matches_instance_num_cpus(value, instance):
+    return value == instance.vcpus
+
+
+def playbook_memory_mb_matches_instance_memory_mb(value, instance):
+    return value * 1024 * 1024 == instance.memory
+
+
+def playbook_application_group_matches_instance_application_group(
+        value, instance):
+    return getattr(RESOURCES['application_group'].get_by_name(value), 'uuid',
+                   None) \
+        == instance.application_group_uuid
+
+
+def playbook_vm_mode_matches_instance_vm_mode(value, instance):
+    return value == instance.vm_mode
+
+
+def playbook_nics_match_instance_nics(playbook_nics, instance):
+    instance_nics = instance.nics
+    for nic in playbook_nics:
+        if nic['name'] not in [vnic['name'] for vnic in instance_nics]:
+            return False
+
+        instance_vnic = next(vnic.uuid for vnic in instance.boot_order if
+                             vnic.name == nic['name'] and vnic.vnic_uuid)
+
+        if 'boot_order' in nic:
+            if nic['boot_order'] != instance_vnic.order:
+                return False
+
+
+def get_new_vnics(playbook_vnics, instance):
+    instance_nic_names = [vnic.name for vnic in instance.boot_order if
+                          vnic.vnic_uuid]
+
+    return [nic for nic in playbook_vnics
+            if nic['name'] not in instance_nic_names]
+
+
+def get_vnics_to_remove(playbook_vnics, instance):
+    absent_vnics = [nic['name'] for nic in playbook_vnics
+                    if nic.get('state') == 'absent']
+
+    instance_nics = [vnic for vnic in instance.boot_order if vnic.vnic_uuid]
+
+    return [vnic.vnic_uuid for vnic in instance_nics
+            if vnic.name in absent_vnics]
+
+
+def remove_vnics_from_instance(vnics_to_remove, instance):
+    initial_nic_count = len(instance.vnics)
+    for vnic_uuid in vnics_to_remove:
+        try:
+            RESOURCES['update_app'].delete_vnic(instance.uuid, vnic_uuid)
+        except Exception as e:
+            fail_with_reason(e)
+    if len(instance.vnics) < initial_nic_count:
+        RESULT['changed'] = True
 
 
 def run_module():
@@ -1293,25 +1404,36 @@ def run_module():
             RESULT['changed'] = True
             MODULE.exit_json(**RESULT)
 
-        bad_inputs = bad_inputs_for_state_change(
-            playbook_instance)
-        if bad_inputs:
-            fail_with_reason(
-                "Currently tacp_instance cannot modify existing "
-                "application instances' configurations apart from power state"
-                " - the following parameter(s) are invalid since instance {} "
-                "already exists: {}".format(instance_name,
-                                            ", ".join(bad_inputs)))
+        current_state = instance.status
+        target_state = playbook_instance['state']
 
-        if 'nics' in playbook_instance:
-            validate_nic_inputs(playbook_instance['nics'], instance)
+        update_instance_state(instance, current_state, target_state)
+
+        unmatching_params = playbook_parameters_not_matching_instance_state(
+            playbook_instance, instance)
+
+        if unmatching_params:
+            fail_with_reason(
+                "The following parameters do not match the running instance's"
+                " state, and their in-place modification is not supported at "
+                "this time: {}".format(','.join(unmatching_params)))
+
+        if playbook_instance.get('nics') is not None:
+            validate_nic_inputs(playbook_instance['nics'])
+            new_vnics = get_new_vnics(playbook_instance['nics'], instance)
             add_playbook_vnics_to_preexisting_instance(
+                new_vnics, instance)
+            vnics_to_remove = get_vnics_to_remove(
                 playbook_instance['nics'], instance)
+            remove_vnics_from_instance(vnics_to_remove, instance)
+            if boot_order_needs_update(playbook_instance, instance):
+                update_boot_order(playbook_instance, instance)
+                RESULT['changed'] = True
 
     else:
         if playbook_instance['state'] == PlaybookState.ABSENT:
             MODULE.exit_json(**RESULT)
-        instance_payload = create_instance(playbook_instance)
+        create_instance(playbook_instance)
 
         instance = RESOURCES['app'].get_by_name(instance_name)
 
@@ -1320,12 +1442,13 @@ def run_module():
             add_playbook_vnics(playbook_instance['nics'], instance)
         add_playbook_disks(playbook_instance['disks'], instance)
 
-        update_boot_order(playbook_instance)
+        if boot_order_needs_update(playbook_instance, instance):
+            update_boot_order(playbook_instance, instance)
 
-    current_state = instance.status
-    target_state = playbook_instance['state']
+        current_state = instance.status
+        target_state = playbook_instance['state']
 
-    update_instance_state(instance, current_state, target_state)
+        update_instance_state(instance, current_state, target_state)
 
     if target_state != PlaybookState.ABSENT:
         final_instance = RESOURCES['app'].get_by_name(instance_name)
