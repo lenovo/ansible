@@ -568,6 +568,13 @@ def fail_and_rollback_vnic_addition(reason, instance, vnic_uuids):
     MODULE.fail_json(**RESULT)
 
 
+def fail_and_rollback_disk_addition(reason, instance, disk_uuids):
+    RESULT['msg'] = reason + "\n Rolled back disk additions."
+    for disk_uuid in disk_uuids:
+        RESOURCES['update_app'].delete_disk(instance.uuid, disk_uuid)
+    MODULE.fail_json(**RESULT)
+
+
 def get_parameters_to_create_new_application(playbook_instance):
     """Given the input configuration for an instance, generate
         parameters for creating the appropriate payload elsewhere.
@@ -741,12 +748,12 @@ def instance_power_action(instance, action):
     RESULT['changed'] = True
 
 
-def update_instance_state(instance, current_state, target_state):
-    if current_state in [ApiState.RUNNING,
-                         ApiState.SHUTDOWN,
-                         ApiState.PAUSED]:
+def update_instance_state(instance, target_state):
+    if instance.status in [ApiState.RUNNING,
+                           ApiState.SHUTDOWN,
+                           ApiState.PAUSED]:
         actions = ACTIONS_TO_CHANGE_FROM_API_STATE_TO_PLAYBOOK_STATE[
-            (current_state, target_state)]
+            (instance.status, target_state)]
         if actions:
             for action in actions:
                 instance_power_action(instance, action)
@@ -980,6 +987,37 @@ def add_playbook_disks(playbook_disks, instance):
         add_disk_to_instance(playbook_disk, instance)
 
 
+def add_playbook_disks_to_preexisting_instance(playbook_disks, instance):
+    """Given a list of disks as dicts, add them to the preexisting instance
+    if a vnic with the same name is not already present on the instance,
+    including disks added during the runtime of this function. Any failures
+    will result in rolling back any new vnic additions here.
+
+    Args:
+        playbook_disks (list): The vNICs from the playbook to be added.
+        instance (ApiApplicationInstancePropertiesPayload): A payload
+            containing the properties of the instance
+    """
+
+    created_disk_uuids = []
+    for playbook_disk in playbook_disks:
+        if playbook_disk.get('state') != 'absent':
+            try:
+                add_disk_to_instance(playbook_disk, instance)
+            except Exception as e:
+                fail_and_rollback_disk_addition(
+                    reason="Failed to add disk {}: {}.".format(
+                        playbook_disk['name'], str(e)),
+                    instance=instance,
+                    disk_uuids=created_disk_uuids)
+
+            instance = RESOURCES['app'].get_by_uuid(instance.uuid)
+            disk_uuid = next(
+                device.disk_uuid for device in instance.boot_order
+                if device.name == playbook_disk['name'])
+            created_disk_uuids.append(disk_uuid)
+
+
 def add_disk_to_instance(playbook_disk, instance):
     """Adds a new disk to an application instance if a disk with the same name
         is not already present in that instance.
@@ -1124,6 +1162,7 @@ def update_boot_order(playbook_instance, instance):
     try:
         RESOURCES['update_app'].edit_boot_order(
             boot_order_payload, instance_uuid)
+        RESULT['changed'] = True
     except Exception as e:
         fail_with_reason(e)
 
@@ -1251,11 +1290,6 @@ def boot_order_needs_update(playbook_instance, instance):
     if 'nics' in playbook_instance:
         for nic in playbook_instance['nics']:
             if nic.get('state') != 'absent':
-                if not instance_nics.get(nic['name']):
-                    fail_with_reason(
-                        "NIC {} was not properly configured, "
-                        "probably due to a bad input. Please check the input "
-                        "configuration and try again.".format(nic['name']))
                 if nic['boot_order'] != instance_nics.get(nic['name']):
                     return True
 
@@ -1265,11 +1299,6 @@ def boot_order_needs_update(playbook_instance, instance):
     if 'disks' in playbook_instance:
         for disk in playbook_instance['disks']:
             if disk.get('state') != 'absent':
-                if not instance_disks.get(disk['name']):
-                    fail_with_reason(
-                        "Disk {} was not properly configured, "
-                        "probably due to a bad input. Please check the input "
-                        "configuration and try again.".format(disk['name']))
                 if disk['boot_order'] != instance_disks.get(disk['name']):
                     return True
     return False
@@ -1388,6 +1417,99 @@ def remove_vnics_from_instance(vnics_to_remove, instance):
         RESULT['changed'] = True
 
 
+def get_new_disks(playbook_disks, instance):
+    instance_disk_names = [disk.name for disk in instance.boot_order if
+                           disk.disk_uuid]
+
+    return [disk for disk in playbook_disks
+            if disk['name'] not in instance_disk_names]
+
+
+def get_disks_to_remove(playbook_disks, instance):
+    absent_disks = [disk['name'] for disk in playbook_disks
+                    if disk.get('state') == 'absent']
+
+    instance_disks = {
+        disk.name: disk.disk_uuid for disk in instance.boot_order
+        if disk.disk_uuid}
+
+    return [uuid for name, uuid in instance_disks.items()
+            if name in absent_disks]
+
+
+def remove_disks_from_instance(disks_to_remove, instance):
+    initial_disk_count = len(instance.disks)
+    for disk_uuid in disks_to_remove:
+        try:
+            RESOURCES['update_app'].delete_disk(instance.uuid, disk_uuid)
+        except Exception as e:
+            fail_with_reason(e)
+    instance = RESOURCES['app'].get_by_name(instance.name)
+    if len(instance.disks) < initial_disk_count:
+        RESULT['changed'] = True
+
+
+def make_instance_disks_match_playbook_disks(playbook_disks, instance):
+    for instance_disk in instance.disks:
+        playbook_disk = next(disk for disk in playbook_disks if
+                             disk['name'] == instance_disk.name)
+        if playbook_disk.get('state') != 'absent':
+            resolve_disk_size(playbook_disk, instance_disk, instance)
+            resolve_disk_bw_limit(playbook_disk, instance_disk, instance)
+            resolve_disk_iops_limit(playbook_disk, instance_disk, instance)
+
+
+def resolve_disk_bw_limit(playbook_disk, instance_disk, instance):
+    if 'bandwidth_limit' in playbook_disk:
+        if playbook_disk['bandwidth_limit'] >= MINIMUM_BW_FIVE_MBPS_IN_BYTES:
+            if playbook_disk['bandwidth_limit'] != instance_disk.bandwidth_limit:  # noqa
+                RESOURCES['update_app'].edit_disk_bw_limit(
+                    instance_disk.uuid,
+                    instance.uuid,
+                    playbook_disk['bandwidth_limit'])
+                RESULT['changed'] = True
+        else:
+            fail_with_reason("Could not update disk {} bandwidth limit - "
+                             "disks must have a bandwidth limit of at least 5 "
+                             "MBps(5000000).".format(instance_disk.name))
+
+
+def resolve_disk_iops_limit(playbook_disk, instance_disk, instance):
+    if 'iops_limit' in playbook_disk:
+        if playbook_disk['iops_limit'] >= MINIMUM_IOPS:
+            if playbook_disk['iops_limit'] != instance_disk.iops_limit:  # noqa
+                RESOURCES['update_app'].edit_disk_iops_limit(
+                    instance_disk.uuid,
+                    instance.uuid,
+                    playbook_disk['iops_limit'])
+                RESULT['changed'] = True
+        else:
+            fail_with_reason("Could not update disk {} IOPS limit - "
+                             "disks must total IOPS limit of at least 50."
+                             .format(instance_disk.name))
+
+
+def resolve_disk_size(playbook_disk, instance_disk, instance):
+    playbook_disk_size_bytes = playbook_disk['size_gb'] * \
+        1024 * 1024 * 1024
+    if instance_disk.size != playbook_disk_size_bytes:
+        resize_disk(playbook_disk_size_bytes, instance_disk, instance)
+
+
+def resize_disk(playbook_disk_size_bytes, instance_disk, instance):
+    if instance_disk.size < playbook_disk_size_bytes:
+        RESOURCES['update_app'].edit_disk_size(
+            instance_disk.uuid, instance.uuid, playbook_disk_size_bytes)
+        RESULT['changed'] = True
+    else:
+        fail_with_reason("Cannot shrink existing disks. Disk {} has a"
+                         " size of {} bytes. The size_gb field must be"
+                         " >= {}.".format(
+                             instance_disk.name,
+                             instance_disk.size,
+                             instance_disk.size / 1024 / 1024 / 1024))
+
+
 def run_module():
     # define available arguments/parameters a user can pass to the module
     if MODULE.check_mode:
@@ -1404,10 +1526,9 @@ def run_module():
             RESULT['changed'] = True
             MODULE.exit_json(**RESULT)
 
-        current_state = instance.status
         target_state = playbook_instance['state']
 
-        update_instance_state(instance, current_state, target_state)
+        update_instance_state(instance, target_state)
 
         unmatching_params = playbook_parameters_not_matching_instance_state(
             playbook_instance, instance)
@@ -1426,9 +1547,20 @@ def run_module():
             vnics_to_remove = get_vnics_to_remove(
                 playbook_instance['nics'], instance)
             remove_vnics_from_instance(vnics_to_remove, instance)
+
+        if playbook_instance.get('disks') is not None:
+            new_disks = get_new_disks(playbook_instance['disks'], instance)
+            if new_disks:
+                add_playbook_disks_to_preexisting_instance(
+                    new_disks, instance)
+            disks_to_remove = get_disks_to_remove(
+                playbook_instance['disks'], instance)
+            if disks_to_remove:
+                remove_disks_from_instance(disks_to_remove, instance)
             if boot_order_needs_update(playbook_instance, instance):
                 update_boot_order(playbook_instance, instance)
-                RESULT['changed'] = True
+            make_instance_disks_match_playbook_disks(
+                playbook_instance['disks'], instance)
 
     else:
         if playbook_instance['state'] == PlaybookState.ABSENT:
@@ -1443,12 +1575,12 @@ def run_module():
         add_playbook_disks(playbook_instance['disks'], instance)
 
         if boot_order_needs_update(playbook_instance, instance):
+            update_instance_state(instance, PlaybookState.STOPPED)
             update_boot_order(playbook_instance, instance)
 
-        current_state = instance.status
         target_state = playbook_instance['state']
 
-        update_instance_state(instance, current_state, target_state)
+        update_instance_state(instance, target_state)
 
     if target_state != PlaybookState.ABSENT:
         final_instance = RESOURCES['app'].get_by_name(instance_name)
