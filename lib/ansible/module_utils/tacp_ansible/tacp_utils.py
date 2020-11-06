@@ -142,7 +142,8 @@ class Resource(object):
                                     'Allowed: {}'.format(op, allowed))
 
                 if len(value_slice) != 1:
-                    raise Exception('Oops .. missing or multiple values provided')
+                    raise Exception(
+                        'Oops .. missing or multiple values provided')
 
                 value = value_slice[0]
                 if len(value) == 0:
@@ -246,6 +247,10 @@ class ApplicationUpdateResource(Resource):
     @wait_to_complete
     def create_disk(self, body, uuid):
         return self.api.create_application_disk_using_post(body, uuid)
+
+    @wait_to_complete
+    def delete_disk(self, uuid, disk_uuid):
+        return self.api.delete_application_disk_using_delete(disk_uuid, uuid)
 
     @wait_to_complete
     def create_vnic(self, body, uuid):
