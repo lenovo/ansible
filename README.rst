@@ -86,6 +86,8 @@ Examples
    - name: Test tacp_info Ansible module for ThinkAgile CP
      hosts: localhost
      gather_facts: false
+     vars:
+       api_key: SECRET_KEY_HERE
      tasks:
      - name: Get details about application instances from ThinkAgile CP
        tacp_info:
@@ -117,6 +119,8 @@ Examples
    - name: Test tacp_instance Ansible module for ThinkAgile CP
      hosts: localhost
      gather_facts: false
+     vars:
+       api_key: SECRET_KEY_HERE
      tasks:
       - name: Create a basic VM on ThinkAgile CP
         tacp_instance:
@@ -270,6 +274,8 @@ Examples
    - name: Test tacp_network Ansible module for ThinkAgile CP
      hosts: localhost
      gather_facts: false
+     vars:
+       api_key: SECRET_KEY_HERE
      tasks:
       - name: Create a VLAN network on ThinkAgile CP
         tacp_network:
@@ -324,6 +330,51 @@ Examples
             cpu_cores: 1
             memory_mb: 1G
             auto_recovery: True
+
+
+
+**tacp_datacenter**
+
+.. code-block:: yaml
+
+  ---
+  - name: Test the tacp_datacenter Ansible module
+    hosts: localhost
+    gather_facts: false
+    vars:
+      api_key: SECRET_KEY_HERE
+    tasks:
+      - name: Create a new datacenter on ThinkAgile CP
+        tacp_datacenter:
+          api_key: "{{ api_key }}"
+          name: Datacenter1
+          support_widget_for_vdc_users: yes
+          migration_zones:
+            - name: MZ1
+              cpu_cores: 10
+              memory_gb: 20
+          storage_pools:
+            - name: Pool1
+              storage_gb: 100
+          networks:
+            - name: VLAN-1
+              network_type: VLAN
+            - name: VNET-1
+              network_type: VNET
+          templates:
+            - name: FreeNAS 9.10
+              new_name: CustomFreeNAS 9.10
+              cpu_cores: 1
+              memory_mb: 2048
+              description: My custom FreeNAS template
+              wait_to_download: yes
+            - name: CentOS 7 - Jenkins - Lenovo Template
+              cpu_cores: 4
+              description: CentOS 7 with custom CPU cores amount
+              wait_to_download: no
+            - name: RHEL 7.4 (Minimal) - Lenovo Template
+              description: RHEL 7.4 with default resources
+              wait_to_download: no
 
 Authors
 =======

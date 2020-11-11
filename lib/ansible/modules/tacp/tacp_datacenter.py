@@ -41,18 +41,146 @@ options:
         module.
     required: true
     type: str
-
-
+  name:
+    description:
+      - The name of the virtual datacenter to be created.
+    required: true
+    type: str
+  support_widget_for_vdc_users:
+    description:
+      - Whether VDC users will have access to the chat support widget in the
+         portal UI.
+    required: false
+    default: false
+    type: bool
+  migration_zones:
+    description:
+      - A list of migration zones, including their CPU cores and/or RAM
+         allocations to be assigned to the new virtual datacenter.
+    required: false
+    type: list
+    suboptions:
+      name:
+        description:
+        - The name of the migration zone whose resources will be allocated to
+           the virtual datacenter.
+        required: true
+        type: str
+      cpu_cores:
+        description:
+        - The number of virtual CPU cores to be allocated to the new virtual
+           datacenter.
+        required: true
+        type: int
+      memory_gb:
+        description:
+        - The amount of RAM in GB to be allocated to the new virtual
+           datacenter.
+        required: true
+        type: float
+  networks:
+    description:
+      - A list of networks to be assigned to the new virtual datacenter.
+    required: false
+    type: list
+    suboptions:
+      name:
+        description:
+        - The name of the network to be assigned to the virtual datacenter.
+        required: true
+        type: str
+      network_type:
+        description:
+        - The type of virtual network to be assigned - must be VLAN or VNET.
+        required: true
+        type: str
+  templates:
+    description:
+      - A list of application templates to be downloaded into the new virtual
+         datacenter's VDC Templates store.
+    required: false
+    type: list
+    suboptions:
+      name:
+        description:
+        - The name of the application template to be downloaded.
+        required: true
+        type: str
+      new_name:
+        description:
+        - An optional new name for the application template once it is
+           downloaded into the VDC Templates store.
+        required: false
+        type: str
+      cpu_cores:
+        description:
+        - The default number of virtual CPUs to be assigned to the template.
+        required: false
+        type: int
+      memory_mb:
+        description:
+        - The default amount of RAM in MB to be assigned to the template.
+        required: false
+        type: int
+      description:
+        description:
+        - A text description for the template.
+        required: false
+        type: str
+      wait_to_download:
+        description:
+        - Whether to fully download the application template to the VDC
+           Templates store before allowing the Ansible task to end.
+        required: false
+        default: false
+        type: bool
 '''
 
 EXAMPLES = '''
+- name: Test the tacp_datacenter Ansible module
+  hosts: localhost
+  gather_facts: false
+  vars:
+    api_key: SECRET_KEY_HERE
+  tasks:
+    - name: Create a new datacenter on ThinkAgile CP
+      tacp_datacenter:
+        api_key: "{{ api_key }}"
+        name: Datacenter1
+        support_widget_for_vdc_users: yes
+        migration_zones:
+          - name: MZ1
+            cpu_cores: 10
+            memory_gb: 20
+        storage_pools:
+          - name: Pool1
+            storage_gb: 100
+        networks:
+          - name: VLAN-1
+            network_type: VLAN
+          - name: VNET-1
+            network_type: VNET
+        templates:
+          - name: FreeNAS 9.10
+            new_name: CustomFreeNAS 9.10
+            cpu_cores: 1
+            memory_mb: 2048
+            description: My custom FreeNAS template
+            wait_to_download: yes
+          - name: CentOS 7 - Jenkins - Lenovo Template
+            cpu_cores: 4
+            description: CentOS 7 with custom CPU cores amount
+            wait_to_download: no
+          - name: RHEL 7.4 (Minimal) - Lenovo Template
+            description: RHEL 7.4 with default resources
+            wait_to_download: no
 
 '''
 
 RETURN = '''
-resource:
-  description: A dict containing a key with the name of the resource type,
-    and a list of the returned resources as a value.
+datacenter:
+  description: A dict containing details about the newly-created virtual
+     datacenter.
   type: dict
   returned: always
 
@@ -79,7 +207,7 @@ RESULT = dict(
 
 MODULE = AnsibleModule(
     argument_spec=module_args,
-    supports_check_mode=True
+    supports_check_mode=False
 )
 
 CONFIGURATION = tacp_utils.get_configuration(MODULE.params['api_key'],
