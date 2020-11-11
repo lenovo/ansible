@@ -15,6 +15,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+
+from tacp.rest import ApiException
+
+
 class ActionTimedOutException(Exception):
     pass
 
@@ -64,4 +68,12 @@ class InvalidDiskNameException(Exception):
 
 
 class InvalidParameterException(Exception):
+    pass
+
+
+class CreateNetworkException(ApiException):
+    pass
+
+
+class AddVnicException(ApiException):
     pass

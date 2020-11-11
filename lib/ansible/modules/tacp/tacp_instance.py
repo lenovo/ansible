@@ -15,17 +15,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from ansible.module_utils.basic import AnsibleModule
-
-from ansible.module_utils.tacp_ansible.tacp_constants import (
-    PlaybookState, ApiState)
-from ansible.module_utils.tacp_ansible import tacp_exceptions
-from ansible.module_utils.tacp_ansible import tacp_utils
-
-import tacp
-from tacp.rest import ApiException
 import json
 from uuid import uuid4
+
+import tacp
+from ansible.module_utils.basic import AnsibleModule
+from ansible.module_utils.tacp_ansible import tacp_exceptions, tacp_utils
+from ansible.module_utils.tacp_ansible.tacp_constants import (
+    ApiState, PlaybookState
+)
+
 
 ANSIBLE_METADATA = {
     'metadata_version': '1.1',
@@ -105,18 +104,18 @@ options:
         stored in. Only required when creating a new instance.
     required: false
     type: str
-  vcpu_cores:
+  num_cpus:
     description:
       - The number of virtual CPU cores that the application instance
         will have when it is created. Only required when creating a new
         instance.
     required: false
     type: int
-  memory:
+  memory_mb:
     description:
       - The amount of virtual memory (RAM) that the application instance
-        will have when it is created. Can be expressed with various
-        units. Only required when creating a new instance.
+        will have when it is created. Only required when creating a new
+        instance.
     required: false
     type: str
   disks:
@@ -136,6 +135,18 @@ options:
             name of a disk in the template).
         required: true
         type: str
+      bandwidth_limit:
+        description:
+          - A limit to the bandwidth usage allowed for this disk.
+            Must be at least 5000000 (5 Mbps).
+        required: false
+        type: int
+      iops_limit:
+        description:
+          - A limit to the total IOPS allowed for this disk.
+            Must be at least 50.
+        required: false
+        type: int
       size_gb:
         description:
           - The size of the disk in GB. Can be expressed as a float.
@@ -189,11 +200,11 @@ options:
         description:
           - Whether this interface should be automatically assigned
             a MAC address.
-          - Providing a MAC address to the mac_address field sets
+          - Providing a MAC address to the mac field sets
             this value to false.
         required: false
         type: bool
-      mac_address:
+      mac:
         description:
           - A static MAC address to be assigned to the NIC. Should
             not exist on any other interfaces on the network.
@@ -264,8 +275,8 @@ EXAMPLES = '''
       migration_zone: Zone1
       template: CentOS 7.5 (64-bit) - Lenovo Template
       storage_pool: Pool1
-      vcpu_cores: 1
-      memory: 4096GB
+      num_cpus: 1
+      memory_mb: 4096
       disks:
       - name: Disk 0
           size_gb: 50
@@ -276,7 +287,7 @@ EXAMPLES = '''
           network: VNET-TEST
           boot_order: 2
 
-- name: Create a shutdown VM with multiple disks and set its NIC to the first 
+- name: Create a shutdown VM with multiple disks and set its NIC to the first
         boot device
   tacp_instance:
       api_key: "{{ api_key }}"
@@ -286,8 +297,8 @@ EXAMPLES = '''
       migration_zone: Zone1
       template: RHEL 7.4 (Minimal) - Lenovo Template
       storage_pool: Pool1
-      vcpu_cores: 1
-      memory: 8G
+      num_cpus: 1
+      memory_mb: 8192
       disks:
       - name: Disk 0
           size_gb: 50
@@ -311,17 +322,15 @@ EXAMPLES = '''
       migration_zone: Zone1
       template: RHEL 7.4 (Minimal) - Lenovo Template
       storage_pool: Pool1
-      vcpu_cores: 1
-      memory: 8GB
+      num_cpus: 1
+      memory_mb: 8192
       disks:
       - name: Disk 0
           size_gb: 50
           boot_order: 2
-          iops_limit: 200
       - name: Disk 1
           size_gb: 200
           boot_order: 3
-          bandwidth_limit: 10000000
       nics:
       - name: vNIC 0
           type: VLAN
@@ -332,7 +341,7 @@ EXAMPLES = '''
           type: VNET
           network: PXE-VNET
           boot_order: 1
-          mac_address: b4:d1:35:00:00:01
+          mac: b4:d1:35:00:00:01
 
 - name: Create a VM from a custom template without virtio drivers
   tacp_instance:
@@ -343,8 +352,8 @@ EXAMPLES = '''
       migration_zone: Zone1
       template: MyCustomTemplate
       storage_pool: Pool1
-      vcpu_cores: 1
-      memory: 4G
+      num_cpus: 1
+      memory_mb: 4096
       vm_mode: Compatibility
       disks:
       - name: Disk 0
@@ -389,8 +398,8 @@ EXAMPLES = '''
       migration_zone: Zone2
       template: "{{ instance.template }}"
       storage_pool: Pool2
-      vcpu_cores: "{{ instance.vcpu_cores }}"
-      memory: "{{ instance.memory }}"
+      num_cpus: "{{ instance.num_cpus }}"
+      memory_mb: "{{ instance.memory_mb }}"
       disks:
         - name: Disk 0
           size_gb: 100
@@ -399,33 +408,33 @@ EXAMPLES = '''
         - name: vNIC 0
           type: "{{ instance.network_type }}"
           network: "{{ instance.network_name }}"
-          mac_address: "{{ instance.mac_address }}"
+          mac: "{{ instance.mac }}"
           boot_order: 2
   loop:
       - { name: CentOS VM 1,
           state: started,
           template: "CentOS 7.5 (64-bit) - Lenovo Template",
-          vcpu_cores: 2,
-          memory: 4096MB,
+          num_cpus: 2,
+          memory_mb: 4096,
           network_type: VLAN,
           network_name: VLAN-15,
-          mac_address: b4:d1:35:00:0f:f0 }
+          mac: b4:d1:35:00:0f:f0 }
       - { name: RHEL VM 11,
           state: stopped,
           template: "RHEL 7.4 (Minimal) - Lenovo Template",
-          vcpu_cores: 6,
-          memory: 6g,
+          num_cpus: 6,
+          memory_mb: 6144,
           network_type: VNET,
           network_name: Production-VNET,
-          mac_address: b4:d1:35:00:0f:f1 }
+          mac: b4:d1:35:00:0f:f1 }
       - { name: Windows Server 2019 VM 1,
           state: started,
           template: "Windows Server 2019 Standard - Lenovo Template",
-          vcpu_cores: 8,
-          memory: 16GB,
+          num_cpus: 8,
+          memory_mb: 16384,
           network_type: VNET,
           network_name: Internal-VNET,
-          mac_address: b4:d1:35:00:0f:f2 }
+          mac: b4:d1:35:00:0f:f2 }
   loop_control:
       loop_var: instance
 '''
@@ -493,8 +502,8 @@ MODULE_ARGS = {
     'migration_zone': {'type': 'str', 'required': False},
     'storage_pool': {'type': 'str', 'required': False},
     'template': {'type': 'str', 'required': False},
-    'vcpu_cores': {'type': 'int', 'required': False},
-    'memory': {'type': 'str', 'required': False},
+    'num_cpus': {'type': 'int', 'required': False},
+    'memory_mb': {'type': 'int', 'required': False},
     'disks': {'type': 'list', 'required': False},
     'nics': {'type': 'list', 'required': False},
     'vtx_enabled': {'type': 'bool', 'default': True, 'required': False},
@@ -530,7 +539,7 @@ API_CLIENT = tacp.ApiClient(CONFIGURATION)
 
 RESOURCES = {
     'app': tacp_utils.ApplicationResource(API_CLIENT),
-    'app_group': tacp_utils.ApplicationGroupResource(API_CLIENT),
+    'application_group': tacp_utils.ApplicationGroupResource(API_CLIENT),
     'datacenter': tacp_utils.DatacenterResource(API_CLIENT),
     'migration_zone': tacp_utils.MigrationZoneResource(API_CLIENT),
     'storage_pool': tacp_utils.StoragePoolResource(API_CLIENT),
@@ -549,6 +558,20 @@ def fail_with_reason(reason):
 def fail_and_rollback_instance_creation(reason, instance):
     RESULT['msg'] = reason + "\n Rolled back application instance creation."
     RESOURCES['app'].delete(instance.uuid)
+    MODULE.fail_json(**RESULT)
+
+
+def fail_and_rollback_vnic_addition(reason, instance, vnic_uuids):
+    RESULT['msg'] = reason + "\n Rolled back NIC additions."
+    for vnic_uuid in vnic_uuids:
+        RESOURCES['update_app'].delete_vnic(instance.uuid, vnic_uuid)
+    MODULE.fail_json(**RESULT)
+
+
+def fail_and_rollback_disk_addition(reason, instance, disk_uuids):
+    RESULT['msg'] = reason + "\n Rolled back disk additions."
+    for disk_uuid in disk_uuids:
+        RESOURCES['update_app'].delete_disk(instance.uuid, disk_uuid)
     MODULE.fail_json(**RESULT)
 
 
@@ -573,7 +596,7 @@ def get_parameters_to_create_new_application(playbook_instance):
             'application_group_uuid': None,
             'networks': None,
             'vcpus': None,
-            'memory': None,
+            'memory_mb': None,
             'vm_mode': None,
             'vtx_enabled': None,
             'auto_recovery_enabled': None,
@@ -604,11 +627,11 @@ def get_parameters_to_create_new_application(playbook_instance):
         data['boot_order'] = template_boot_order
 
     if playbook_instance['application_group']:
-        uuid = RESOURCES['app_group'].get_uuid_by_name(
+        uuid = RESOURCES['application_group'].get_uuid_by_name(
             playbook_instance['application_group']
         )
         if uuid is None:
-            resp = RESOURCES['app_group'].create(
+            resp = RESOURCES['application_group'].create(
                 playbook_instance['application_group'],
                 data['datacenter_uuid']
             )
@@ -648,9 +671,9 @@ def get_parameters_to_create_new_application(playbook_instance):
         network_payloads.append(add_network_payload)
 
     data['networks'] = network_payloads
-    data['vcpus'] = playbook_instance['vcpu_cores']
+    data['vcpus'] = playbook_instance['num_cpus']
     data['memory'] = tacp_utils.convert_memory_abbreviation_to_bytes(
-        playbook_instance['memory'])
+        str(playbook_instance['memory_mb']) + "MB")
     data['vm_mode'] = playbook_instance.get('vm_mode').capitalize()
     data['vtx_enabled'] = playbook_instance.get('vtx_enabled')
     data['auto_recovery_enabled'] = playbook_instance.get(
@@ -725,14 +748,16 @@ def instance_power_action(instance, action):
     RESULT['changed'] = True
 
 
-def update_instance_state(instance, current_state, target_state):
-    if current_state in [ApiState.RUNNING,
-                         ApiState.SHUTDOWN,
-                         ApiState.PAUSED]:
-        for action in ACTIONS_TO_CHANGE_FROM_API_STATE_TO_PLAYBOOK_STATE[
-                (current_state, target_state)]:
-            instance_power_action(instance, action)
-        RESULT['changed'] = True
+def update_instance_state(instance, target_state):
+    if instance.status in [ApiState.RUNNING,
+                           ApiState.SHUTDOWN,
+                           ApiState.PAUSED]:
+        actions = ACTIONS_TO_CHANGE_FROM_API_STATE_TO_PLAYBOOK_STATE[
+            (instance.status, target_state)]
+        if actions:
+            for action in actions:
+                instance_power_action(instance, action)
+            RESULT['changed'] = True
 
 
 def add_playbook_vnics(playbook_vnics, instance):
@@ -757,6 +782,37 @@ def add_playbook_vnics(playbook_vnics, instance):
             add_vnic_to_instance(playbook_vnic, instance)
 
 
+def add_playbook_vnics_to_preexisting_instance(playbook_vnics, instance):
+    """Given a list of vnics as dicts, add them to the preexisting instance
+    if a vnic with the same name is not already present on the instance,
+    including vnics added during the runtime of this function. Any failures
+    will result in rolling back any new vnic additions here.
+
+    Args:
+        playbook_vnics (list): The vNICs from the playbook to be added.
+        instance (ApiApplicationInstancePropertiesPayload): A payload
+            containing the properties of the instance
+    """
+
+    created_vnic_uuids = []
+    for playbook_vnic in playbook_vnics:
+        if playbook_vnic.get('state') != 'absent':
+            try:
+                add_vnic_to_instance(playbook_vnic, instance)
+            except tacp_exceptions.AddVnicException as e:
+                fail_and_rollback_vnic_addition(
+                    reason="Failed to add NIC {}: {}.".format(
+                        playbook_vnic['name'], str(e)),
+                    instance=instance,
+                    vnic_uuids=created_vnic_uuids)
+
+            instance = RESOURCES['app'].get_by_uuid(instance.uuid)
+            vnic_uuid = next(
+                device.vnic_uuid for device in instance.boot_order
+                if device.name == playbook_vnic['name'])
+            created_vnic_uuids.append(vnic_uuid)
+
+
 def add_vnic_to_instance(playbook_vnic, instance):
     """Adds a vNIC to an instance if a vNIC with the same name is not already
         present in that instance.
@@ -769,13 +825,9 @@ def add_vnic_to_instance(playbook_vnic, instance):
     """
     datacenter_uuid = instance.datacenter_uuid
 
-    failure_reason = None
-    try:
-        parameters_to_create_vnic = get_parameters_to_create_vnic(
-            datacenter_uuid,
-            playbook_vnic)
-    except Exception as e:
-        fail_and_rollback_instance_creation(str(e), instance)
+    parameters_to_create_vnic = get_parameters_to_create_vnic(
+        datacenter_uuid,
+        playbook_vnic)
 
     vnic_payload = get_add_vnic_payload(parameters_to_create_vnic)
     vnic_uuid = str(uuid4())
@@ -784,12 +836,10 @@ def add_vnic_to_instance(playbook_vnic, instance):
     response = RESOURCES['update_app'].create_vnic(body=network_payload,
                                                    uuid=instance.uuid)
 
-    if hasattr(response, 'body'):
-        response_body = json.loads(response.body)
-
-        if "Invalid Request" in response_body['code']:
-            fail_and_rollback_instance_creation(response_body['message'],
-                                                instance)
+    if not hasattr(response, 'object_uuid'):
+        message = json.loads(response.body)['message']
+        if message:
+            raise tacp_exceptions.AddVnicException(message)
 
 
 def get_parameters_to_create_vnic(datacenter_uuid, playbook_vnic,
@@ -804,17 +854,17 @@ def get_parameters_to_create_vnic(datacenter_uuid, playbook_vnic,
             if applicable. Defaults to None.
 
     Raises:
-        tacp_exceptions.InvalidVnicNameException
-        tacp_exceptions.InvalidNetworkTypeException
-        tacp_exceptions.InvalidNetworkNameException
-        tacp_exceptions.InvalidFirewallOverrideNameException
+        InvalidVnicNameException
+        InvalidNetworkTypeException
+        InvalidNetworkNameException
+        InvalidFirewallOverrideNameException
 
     Returns:
         dict: The parameters necessary to create an ApiAddVnicPayload.
     """
     data = {
         'name': None,
-        'mac_address': None,
+        'mac': None,
         'automatic_mac_address': None,
         'network_type': None,
         'network_uuid': None,
@@ -824,10 +874,10 @@ def get_parameters_to_create_vnic(datacenter_uuid, playbook_vnic,
 
     data['name'] = playbook_vnic.get('name')
 
-    data['mac_address'] = playbook_vnic.get('mac_address')
+    data['mac'] = playbook_vnic.get('mac')
 
     data['automatic_mac_address'] = not bool(
-        playbook_vnic.get('mac_address'))
+        playbook_vnic.get('mac'))
 
     network_type = playbook_vnic.get('type').lower()
     if network_type not in ['vnet', 'vlan']:
@@ -877,7 +927,7 @@ def get_add_vnic_payload(vnic_parameters):
         boot_order=vnic_parameters['boot_order'],
         automatic_mac_address=vnic_parameters['automatic_mac_address'],  # noqa
         firewall_override_uuid=vnic_parameters['firewall_override_uuid'],  # noqa
-        mac_address=vnic_parameters['mac_address'],
+        mac_address=vnic_parameters['mac'],
         name=vnic_parameters['name'],
         network_uuid=vnic_parameters['network_uuid'])
 
@@ -937,6 +987,37 @@ def add_playbook_disks(playbook_disks, instance):
         add_disk_to_instance(playbook_disk, instance)
 
 
+def add_playbook_disks_to_preexisting_instance(playbook_disks, instance):
+    """Given a list of disks as dicts, add them to the preexisting instance
+    if a vnic with the same name is not already present on the instance,
+    including disks added during the runtime of this function. Any failures
+    will result in rolling back any new vnic additions here.
+
+    Args:
+        playbook_disks (list): The vNICs from the playbook to be added.
+        instance (ApiApplicationInstancePropertiesPayload): A payload
+            containing the properties of the instance
+    """
+
+    created_disk_uuids = []
+    for playbook_disk in playbook_disks:
+        if playbook_disk.get('state') != 'absent':
+            try:
+                add_disk_to_instance(playbook_disk, instance)
+            except Exception as e:
+                fail_and_rollback_disk_addition(
+                    reason="Failed to add disk {}: {}.".format(
+                        playbook_disk['name'], str(e)),
+                    instance=instance,
+                    disk_uuids=created_disk_uuids)
+
+            instance = RESOURCES['app'].get_by_uuid(instance.uuid)
+            disk_uuid = next(
+                device.disk_uuid for device in instance.boot_order
+                if device.name == playbook_disk['name'])
+            created_disk_uuids.append(disk_uuid)
+
+
 def add_disk_to_instance(playbook_disk, instance):
     """Adds a new disk to an application instance if a disk with the same name
         is not already present in that instance.
@@ -947,7 +1028,6 @@ def add_disk_to_instance(playbook_disk, instance):
         instance (ApiApplicationInstancePropertiesPayload): A payload
             containing the properties of the instance
     """
-    failure_reason = None
 
     try:
         disk_payload = get_disk_payload(playbook_disk)
@@ -973,23 +1053,29 @@ def get_disk_payload(playbook_disk):
             Ansible playbook
 
     Raises:
-        tacp_exceptions.InvalidDiskBandwidthLimitException
-        tacp_exceptions.InvalidDiskIopsLimitException
-        tacp_exceptions.InvalidDiskSizeException
-        tacp_exceptions.InvalidDiskNameException
+        InvalidDiskBandwidthLimitException
+        InvalidDiskIopsLimitException
+        InvalidDiskSizeException
+        InvalidDiskNameException
 
     Returns:
         ApiDiskSizeAndLimitPayload: The populated payload object to be provided
             to the function that actually creates the disk.
     """
 
-    if 'bandwidth_limit' in playbook_disk:
-        raise tacp_exceptions.InvalidParameterException(
-            'Invalid disk parameter "bandwidth_limit" provided.')
+    bandwidth_limit = playbook_disk.get('bandwidth_limit')
+    if bandwidth_limit:
+        if int(bandwidth_limit) < MINIMUM_BW_FIVE_MBPS_IN_BYTES:
+            raise tacp_exceptions.InvalidDiskBandwidthLimitException(
+                'Could not add disk to instance; disks must have a bandwidth limit of at least 5 MBps (5000000).'  # noqa
+        )
 
-    if 'iops_limit' in playbook_disk:
-        raise tacp_exceptions.InvalidParameterException(
-            'Invalid disk parameter "iops_limit" provided.')
+    iops_limit = playbook_disk.get('iops_limit')
+    if iops_limit:
+        if int(iops_limit) < MINIMUM_IOPS:
+            raise tacp_exceptions.InvalidDiskIopsLimitException(
+                'Could not add disk to instance; disks must have a total IOPS limit of at least 50.'  # noqa
+        )
 
     size_gb = playbook_disk.get('size_gb')
     if not size_gb:
@@ -1009,7 +1095,9 @@ def get_disk_payload(playbook_disk):
     disk_payload = tacp.ApiDiskSizeAndLimitPayload(
         name=name,
         size=size_bytes,
-        uuid=str(uuid4())
+        uuid=str(uuid4()),
+        iops_limit=iops_limit,
+        bandwidth_limit=bandwidth_limit
     )
 
     return disk_payload
@@ -1043,13 +1131,21 @@ def update_default_disk(playbook_disk, instance):
             target_disk_size_bytes)
 
     if 'bandwidth_limit' in playbook_disk:
-        fail_with_reason('Invalid disk parameter "bandwidth_limit" provided.')
+        RESOURCES['update_app'].edit_disk_bw_limit(
+            existing_disk.uuid,
+            instance.uuid,
+            playbook_disk['bandwidth_limit']
+        )
 
     if 'iops_limit' in playbook_disk:
-        fail_with_reason('Invalid disk parameter "iops_limit" provided.')
+        RESOURCES['update_app'].edit_disk_iops_limit(
+            existing_disk.uuid,
+            instance.uuid,
+            playbook_disk['iops_limit']
+        )
 
 
-def update_boot_order(playbook_instance):
+def update_boot_order(playbook_instance, instance):
     """Updates the boot order of an instance using the boot order information
         provided in the Ansible playbook input.
 
@@ -1057,12 +1153,18 @@ def update_boot_order(playbook_instance):
         playbook_instance (dict): The specified instance configuration from
         the playbook input
     """
+
     boot_order_payload = get_full_boot_order_payload_for_playbook(
         playbook_instance)
     instance_uuid = RESOURCES['app'].get_by_name(
         playbook_instance['name']).uuid
 
-    RESOURCES['update_app'].edit_boot_order(boot_order_payload, instance_uuid)
+    try:
+        RESOURCES['update_app'].edit_boot_order(
+            boot_order_payload, instance_uuid)
+        RESULT['changed'] = True
+    except Exception as e:
+        fail_with_reason(e)
 
 
 def get_full_boot_order_payload_for_playbook(playbook_instance):
@@ -1145,17 +1247,267 @@ def get_boot_order_payload(boot_order_entry):
     return boot_order_payload
 
 
-def bad_inputs_for_state_change(playbook_instance):
-    non_state_change_inputs = ['datacenter', 'migration_zone', 'storage_pool',
-                               'template', 'vcpu_cores', 'disks', 'nics',
-                               'description', 'application_group']
+def validate_nic_inputs(playbook_nics):
+    checks = {nics_names_are_unique:
+              'All NICs of an instance must have unique names.',
+              nics_have_valid_networks:
+              'NICs must be assigned to existing VLAN or VNET networks.'}
 
-    bad_inputs_in_playbook = [bad_input for bad_input in
-                              non_state_change_inputs
-                              if playbook_instance[bad_input]
-                              ]
+    for check, fail_reason in checks.items():
+        result = check(playbook_nics)
 
-    return bad_inputs_in_playbook
+        if not result:
+            fail_with_reason(fail_reason)
+
+
+def nics_names_are_unique(playbook_nics):
+    playbook_names = [nic['name']
+                      for nic in playbook_nics if nic.get('state') != 'absent']
+
+    return len(playbook_names) == len(set(playbook_names))
+
+
+def nics_have_valid_networks(playbook_nics):
+    networks = {'vnet': [vnet.name for vnet in RESOURCES['vnet'].filter()],
+                'vlans': [vlan.name for vlan in RESOURCES['vlan'].filter()]}
+
+    networks['vlan'] = networks['vlans']
+
+    for nic in playbook_nics:
+        if 'state' in nic:
+            if nic['state'] == 'absent':
+                continue
+        if nic['network'] not in networks[nic['type'].lower()]:
+            return False
+    return True
+
+
+def boot_order_needs_update(playbook_instance, instance):
+
+    instance_nics = {
+        nic.name: nic.order for nic in instance.boot_order if nic.vnic_uuid}
+
+    if 'nics' in playbook_instance:
+        for nic in playbook_instance['nics']:
+            if nic.get('state') != 'absent':
+                if nic['boot_order'] != instance_nics.get(nic['name']):
+                    return True
+
+    instance_disks = {disk.name: disk.order for disk in instance.boot_order
+                      if disk.disk_uuid}
+
+    if 'disks' in playbook_instance:
+        for disk in playbook_instance['disks']:
+            if disk.get('state') != 'absent':
+                if disk['boot_order'] != instance_disks.get(disk['name']):
+                    return True
+    return False
+
+
+def playbook_parameters_not_matching_instance_state(
+        playbook_instance, instance):
+    parameters_not_matching = []
+
+    parameter_matches = {
+        'datacenter': playbook_datacenter_matches_instance_datacenter,
+        'storage_pool': playbook_storage_pool_matches_instance_storage_pool,
+        'vtx_enabled': playbook_vtx_matches_instance_vtx,
+        'migration_zone': playbook_migration_zone_matches_instance_migration_zone,  # noqa
+        'template': playbook_template_matches_instance_template,
+        'num_cpus': playbook_num_cpus_matches_instance_num_cpus,
+        'memory_mb': playbook_memory_mb_matches_instance_memory_mb,
+        'application_group': playbook_application_group_matches_instance_application_group,  # noqa
+        'vm_mode': playbook_vm_mode_matches_instance_vm_mode
+    }
+    for parameter in playbook_instance:
+        if parameter in parameter_matches and playbook_instance.get(parameter):
+            if not parameter_matches[parameter](
+                    playbook_instance[parameter], instance):
+                parameters_not_matching.append(parameter)
+
+    return parameters_not_matching
+
+
+def playbook_datacenter_matches_instance_datacenter(value, instance):
+    return getattr(RESOURCES['datacenter'].get_by_name(value), 'uuid', None) \
+        == instance.datacenter_uuid
+
+
+def playbook_storage_pool_matches_instance_storage_pool(value, instance):
+    return getattr(RESOURCES['storage_pool'].get_by_name(value), 'uuid',
+                   None) \
+        == instance.flash_pool_uuid
+
+
+def playbook_vtx_matches_instance_vtx(value, instance):
+    return value == instance.hardware_assisted_virtualization_enabled
+
+
+def playbook_migration_zone_matches_instance_migration_zone(value, instance):
+    return getattr(RESOURCES['migration_zone'].get_by_name(value), 'uuid',
+                   None) \
+        == instance.migration_zone_uuid
+
+
+def playbook_template_matches_instance_template(value, instance):
+    return value == \
+        getattr(RESOURCES['template'].get_by_uuid(
+            instance.template_uuid), 'name', None)
+
+
+def playbook_num_cpus_matches_instance_num_cpus(value, instance):
+    return value == instance.vcpus
+
+
+def playbook_memory_mb_matches_instance_memory_mb(value, instance):
+    return value * 1024 * 1024 == instance.memory
+
+
+def playbook_application_group_matches_instance_application_group(
+        value, instance):
+    return getattr(RESOURCES['application_group'].get_by_name(value), 'uuid',
+                   None) \
+        == instance.application_group_uuid
+
+
+def playbook_vm_mode_matches_instance_vm_mode(value, instance):
+    return value == instance.vm_mode
+
+
+def playbook_nics_match_instance_nics(playbook_nics, instance):
+    instance_nics = instance.nics
+    for nic in playbook_nics:
+        if nic['name'] not in [vnic['name'] for vnic in instance_nics]:
+            return False
+
+        instance_vnic = next(vnic.uuid for vnic in instance.boot_order if
+                             vnic.name == nic['name'] and vnic.vnic_uuid)
+
+        if 'boot_order' in nic:
+            if nic['boot_order'] != instance_vnic.order:
+                return False
+
+
+def get_new_vnics(playbook_vnics, instance):
+    instance_nic_names = [vnic.name for vnic in instance.boot_order if
+                          vnic.vnic_uuid]
+
+    return [nic for nic in playbook_vnics
+            if nic['name'] not in instance_nic_names]
+
+
+def get_vnics_to_remove(playbook_vnics, instance):
+    absent_vnics = [nic['name'] for nic in playbook_vnics
+                    if nic.get('state') == 'absent']
+
+    instance_nics = [vnic for vnic in instance.boot_order if vnic.vnic_uuid]
+
+    return [vnic.vnic_uuid for vnic in instance_nics
+            if vnic.name in absent_vnics]
+
+
+def remove_vnics_from_instance(vnics_to_remove, instance):
+    initial_nic_count = len(instance.vnics)
+    for vnic_uuid in vnics_to_remove:
+        try:
+            RESOURCES['update_app'].delete_vnic(instance.uuid, vnic_uuid)
+        except Exception as e:
+            fail_with_reason(e)
+    if len(instance.vnics) < initial_nic_count:
+        RESULT['changed'] = True
+
+
+def get_new_disks(playbook_disks, instance):
+    instance_disk_names = [disk.name for disk in instance.boot_order if
+                           disk.disk_uuid]
+
+    return [disk for disk in playbook_disks
+            if disk['name'] not in instance_disk_names]
+
+
+def get_disks_to_remove(playbook_disks, instance):
+    absent_disks = [disk['name'] for disk in playbook_disks
+                    if disk.get('state') == 'absent']
+
+    instance_disks = {
+        disk.name: disk.disk_uuid for disk in instance.boot_order
+        if disk.disk_uuid}
+
+    return [uuid for name, uuid in instance_disks.items()
+            if name in absent_disks]
+
+
+def remove_disks_from_instance(disks_to_remove, instance):
+    initial_disk_count = len(instance.disks)
+    for disk_uuid in disks_to_remove:
+        try:
+            RESOURCES['update_app'].delete_disk(instance.uuid, disk_uuid)
+        except Exception as e:
+            fail_with_reason(e)
+    instance = RESOURCES['app'].get_by_name(instance.name)
+    if len(instance.disks) < initial_disk_count:
+        RESULT['changed'] = True
+
+
+def make_instance_disks_match_playbook_disks(playbook_disks, instance):
+    for instance_disk in instance.disks:
+        playbook_disk = next(disk for disk in playbook_disks if
+                             disk['name'] == instance_disk.name)
+        if playbook_disk.get('state') != 'absent':
+            resolve_disk_size(playbook_disk, instance_disk, instance)
+            resolve_disk_bw_limit(playbook_disk, instance_disk, instance)
+            resolve_disk_iops_limit(playbook_disk, instance_disk, instance)
+
+
+def resolve_disk_bw_limit(playbook_disk, instance_disk, instance):
+    if 'bandwidth_limit' in playbook_disk:
+        if playbook_disk['bandwidth_limit'] >= MINIMUM_BW_FIVE_MBPS_IN_BYTES:
+            if playbook_disk['bandwidth_limit'] != instance_disk.bandwidth_limit:  # noqa
+                RESOURCES['update_app'].edit_disk_bw_limit(
+                    instance_disk.uuid,
+                    instance.uuid,
+                    playbook_disk['bandwidth_limit'])
+                RESULT['changed'] = True
+        else:
+            fail_with_reason("Could not update disk {} bandwidth limit - "
+                             "disks must have a bandwidth limit of at least 5 "
+                             "MBps(5000000).".format(instance_disk.name))
+
+
+def resolve_disk_iops_limit(playbook_disk, instance_disk, instance):
+    if 'iops_limit' in playbook_disk:
+        if playbook_disk['iops_limit'] >= MINIMUM_IOPS:
+            if playbook_disk['iops_limit'] != instance_disk.iops_limit:  # noqa
+                RESOURCES['update_app'].edit_disk_iops_limit(
+                    instance_disk.uuid,
+                    instance.uuid,
+                    playbook_disk['iops_limit'])
+                RESULT['changed'] = True
+        else:
+            fail_with_reason("Could not update disk {} IOPS limit - "
+                             "disks must total IOPS limit of at least 50."
+                             .format(instance_disk.name))
+
+
+def resolve_disk_size(playbook_disk, instance_disk, instance):
+    playbook_disk_size_bytes = playbook_disk['size_gb'] * \
+        1024 * 1024 * 1024
+    if instance_disk.size != playbook_disk_size_bytes:
+        resize_disk(playbook_disk_size_bytes, instance_disk, instance)
+
+
+def resize_disk(playbook_disk_size_bytes, instance_disk, instance):
+    if instance_disk.size < playbook_disk_size_bytes:
+        RESOURCES['update_app'].edit_disk_size(
+            instance_disk.uuid, instance.uuid, playbook_disk_size_bytes)
+        RESULT['changed'] = True
+    else:
+        fail_with_reason("Cannot shrink existing disks. Disk {} has a"
+                         " size of {} bytes. The size_gb field must be"
+                         " >= {}.".format(
+                             instance_disk.name,
+                             instance_disk.size,
+                             instance_disk.size / 1024 / 1024 / 1024))
 
 
 def run_module():
@@ -1169,35 +1521,66 @@ def run_module():
 
     instance = RESOURCES['app'].get_by_name(instance_name)
     if instance:
-        bad_inputs = bad_inputs_for_state_change(
-            playbook_instance)
-        if bad_inputs:
-            fail_with_reason(
-                "Currently tacp_instance cannot modify existing "
-                "application instances' configurations apart from power state"
-                " - the following parameter(s) are invalid since instance {} "
-                "already exists: {}".format(instance_name,
-                                            ", ".join(bad_inputs)))
         if playbook_instance['state'] == PlaybookState.ABSENT:
             RESOURCES['app'].delete(instance.uuid)
             RESULT['changed'] = True
             MODULE.exit_json(**RESULT)
+
+        target_state = playbook_instance['state']
+
+        update_instance_state(instance, target_state)
+
+        unmatching_params = playbook_parameters_not_matching_instance_state(
+            playbook_instance, instance)
+
+        if unmatching_params:
+            fail_with_reason(
+                "The following parameters do not match the running instance's"
+                " state, and their in-place modification is not supported at "
+                "this time: {}".format(','.join(unmatching_params)))
+
+        if playbook_instance.get('nics') is not None:
+            validate_nic_inputs(playbook_instance['nics'])
+            new_vnics = get_new_vnics(playbook_instance['nics'], instance)
+            add_playbook_vnics_to_preexisting_instance(
+                new_vnics, instance)
+            vnics_to_remove = get_vnics_to_remove(
+                playbook_instance['nics'], instance)
+            remove_vnics_from_instance(vnics_to_remove, instance)
+
+        if playbook_instance.get('disks') is not None:
+            new_disks = get_new_disks(playbook_instance['disks'], instance)
+            if new_disks:
+                add_playbook_disks_to_preexisting_instance(
+                    new_disks, instance)
+            disks_to_remove = get_disks_to_remove(
+                playbook_instance['disks'], instance)
+            if disks_to_remove:
+                remove_disks_from_instance(disks_to_remove, instance)
+            if boot_order_needs_update(playbook_instance, instance):
+                update_boot_order(playbook_instance, instance)
+            make_instance_disks_match_playbook_disks(
+                playbook_instance['disks'], instance)
+
     else:
         if playbook_instance['state'] == PlaybookState.ABSENT:
             MODULE.exit_json(**RESULT)
-        instance_payload = create_instance(playbook_instance)
+        create_instance(playbook_instance)
 
         instance = RESOURCES['app'].get_by_name(instance_name)
 
-        add_playbook_vnics(playbook_instance['nics'], instance)
+        if 'nics' in playbook_instance:
+            validate_nic_inputs(playbook_instance['nics'])
+            add_playbook_vnics(playbook_instance['nics'], instance)
         add_playbook_disks(playbook_instance['disks'], instance)
 
-        update_boot_order(playbook_instance)
+        if boot_order_needs_update(playbook_instance, instance):
+            update_instance_state(instance, PlaybookState.STOPPED)
+            update_boot_order(playbook_instance, instance)
 
-    current_state = instance.status
-    target_state = playbook_instance['state']
+        target_state = playbook_instance['state']
 
-    update_instance_state(instance, current_state, target_state)
+        update_instance_state(instance, target_state)
 
     if target_state != PlaybookState.ABSENT:
         final_instance = RESOURCES['app'].get_by_name(instance_name)

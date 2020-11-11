@@ -85,6 +85,10 @@ def wait_to_complete(method):
     return wrapper
 
 
+class _ResourceFilterMissingValues(Exception):
+    pass
+
+
 class Resource(object):
     resource_class = None
 
@@ -132,14 +136,19 @@ class Resource(object):
 
         for k, v in kws.items():
             if isinstance(v, (list, tuple)):
-                op, value = v[0], v[1:]
+                op, value_slice = v[0], v[1:]
                 if op not in allowed:
                     raise Exception('Invalid operator "{}". '
                                     'Allowed: {}'.format(op, allowed))
-                if len(value) == 0:
-                    raise Exception('Must provide at least one value')
 
-                value = value[0]
+                if len(value_slice) != 1:
+                    raise Exception(
+                        'Oops .. missing or multiple values provided')
+
+                value = value_slice[0]
+                if len(value) == 0:
+                    raise _ResourceFilterMissingValues
+
                 if op in ('=in=', '=out='):
                     value = ','.join(map(lambda v: '"{}"'.format(v), value))
                     value = '({})'.format(value)
@@ -173,7 +182,10 @@ class Resource(object):
         if method is None:
             raise Exception('Invalid self.filter_method')
 
-        return method(**self.get_filters_kws(**filters))
+        try:
+            return method(**self.get_filters_kws(**filters))
+        except _ResourceFilterMissingValues:
+            return []
 
     def get_by_uuid(self, uuid):
         if self.uuid_method is None:
@@ -237,8 +249,15 @@ class ApplicationUpdateResource(Resource):
         return self.api.create_application_disk_using_post(body, uuid)
 
     @wait_to_complete
+    def delete_disk(self, uuid, disk_uuid):
+        return self.api.delete_application_disk_using_delete(disk_uuid, uuid)
+
+    @wait_to_complete
     def create_vnic(self, body, uuid):
         return self.api.create_application_vnic_using_post(body, uuid)
+
+    def delete_vnic(self, uuid, vnic_uuid):
+        return self.api.delete_application_vnic_using_delete(uuid, vnic_uuid)
 
     def edit_boot_order(self, body, uuid):
         return self.api.edit_application_boot_order_using_put(body, uuid)
@@ -326,6 +345,12 @@ class DatacenterResource(Resource):
 
         return firewall_override
 
+    def create(self, body):
+        return self.api.create_datacenter_using_post(body)
+
+    def assign_network(self, body, uuid):
+        return self.api.update_networks_to_datacenter_using_put(body, uuid)
+
 
 class UserResource(Resource):
 
@@ -335,7 +360,7 @@ class UserResource(Resource):
     uuid_method = "get_user_using_get"
 
 
-class SiteResource(Resource):
+class StackResource(Resource):
 
     resource_class = tacp.LocationsApi
 
@@ -373,6 +398,10 @@ class MarketplaceTemplateResource(Resource):
 
     filter_method = "get_marketplace_templates_using_get"
     uuid_method = "get_marketplace_template_using_get"
+
+    @wait_to_complete
+    def download_marketplace_template_to_datacenter(self, body, uuid):
+        return self.api.download_marketplace_template_using_put(body, uuid)
 
 
 class ApplicationGroupResource(Resource):
