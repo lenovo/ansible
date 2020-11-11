@@ -179,7 +179,7 @@ Examples
           template: RHEL 7.4 (Minimal) - Lenovo Template
           storage_pool: Pool1
           num_cpus: 1
-          memory_mb: 8GB
+          memory_mb: 8192
           disks:
             - name: Disk 0
               size_gb: 50
@@ -328,7 +328,7 @@ Examples
             storage_pool: Pool1
             migration_zone: Zone1
             cpu_cores: 1
-            memory_mb: 1G
+            memory_mb: 1024
             auto_recovery: True
 
 
